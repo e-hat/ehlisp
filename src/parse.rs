@@ -3,6 +3,8 @@ use std::fmt;
 use std::io;
 use std::io::{Error, ErrorKind};
 use std::str;
+use std::rc::Rc;
+use std::ops::Deref;
 
 use regex::Regex;
 
@@ -26,12 +28,6 @@ fn is_alpha(c: u8) -> bool {
     re.is_match(str::from_utf8(&[c]).unwrap())
 }
 
-fn is_alphanumeric(c: u8) -> bool {
-    let re = Regex::new(r"[a-zA-Z0-9_]").unwrap();
-
-    re.is_match(str::from_utf8(&[c]).unwrap())
-}
-
 fn unexpected(c: u8) -> Error {
     return Error::new(
         ErrorKind::InvalidInput,
@@ -40,38 +36,66 @@ fn unexpected(c: u8) -> Error {
 }
 
 #[derive(Debug)]
-pub enum Ast {
+pub enum Obj {
     Fixnum(i32),
     Bool(bool),
     Local(String),
-    List(Vec<Ast>),
+    Nil,
+    Pair(Rc<Obj>, Rc<Obj>),
 }
 
-impl fmt::Display for Ast {
+impl fmt::Display for Obj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Ast::Fixnum(n) => f.write_str(&format!("{}", n)),
-            Ast::Bool(b) => {
+            Obj::Fixnum(n) => f.write_str(&format!("{}", n)),
+            Obj::Bool(b) => {
                 if *b {
                     f.write_str("#t")
                 } else {
                     f.write_str("#f")
                 }
             }
-            Ast::Local(l) => f.write_str(l),
-            Ast::List(elems) => {
-                let mut output = String::from("( ");
-                for (i, e) in elems.iter().enumerate() {
-                    output.push_str(&format!("{}", e));
-                    if i < elems.len() - 1 {
-                        output.push_str(" . ");
-                    }
+            Obj::Local(l) => f.write_str(l),
+            Obj::Nil => f.write_str("nil"),
+            Obj::Pair(_, _) => {
+                let mut res = String::from("");
+
+                if self.is_list() {
+                    res.push_str(&self.print_list());
+                } else {
+                    res.push_str(&self.print_pair());
                 }
 
-                output.push_str(" )");
-
-                f.write_str(&output)
+                f.write_str(&format!("({})", res))
             },
+        }
+    }
+
+}
+
+impl Obj {
+    fn is_list(&self) -> bool {
+        match self {
+            Obj::Nil => true,
+            Obj::Pair(_, r) => r.is_list(),
+            _ => false,
+        }
+    }
+
+    fn print_list(&self) -> String {
+        match self {
+            Obj::Pair(l, rp) => match rp.deref() {
+                Obj::Nil => format!("{}", l),
+                r => format!("{} {}", l, r.print_list()),
+            },
+            _ => panic!("Inconceivable!"),
+        }
+    }
+
+    fn print_pair(&self) -> String {
+        match self {
+            Obj::Pair(l, r) => format!("{} . {}", l, r),
+            _ => panic!("Inconceivable!"),
         }
     }
 }
@@ -85,40 +109,38 @@ impl Stream<'_> {
         }
     }
 
-    pub fn read_sexp(&mut self) -> io::Result<Ast> {
+    pub fn read_sexp(&mut self) -> io::Result<Rc<Obj>> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if is_digit(c) || c == b'-' {
             self.unread_char(c);
-            self.read_num().map(|n| Ast::Fixnum(n))
+            self.read_num().map(|n| Rc::new(Obj::Fixnum(n)))
         } else if c == b'#' {
             self.unread_char(c);
-            self.read_bool().map(|b| Ast::Bool(b))
+            self.read_bool().map(|b| Rc::new(Obj::Bool(b)))
         } else if is_alpha(c) {
             self.unread_char(c);
-            self.read_id().map(|l| Ast::Local(l))
+            self.read_id().map(|l| Rc::new(Obj::Local(l)))
         } else if c == b'(' {
-            self.read_list().map(|l| Ast::List(l))
+            self.read_list()
         } else {
             Err(unexpected(c))
         }
     }
 
-    fn read_list(&mut self) -> io::Result<Vec<Ast>> {
+    fn read_list(&mut self) -> io::Result<Rc<Obj>> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if c == b')' {
-            Ok(Vec::new())
+            Ok(Rc::new(Obj::Nil))
         } else {
             self.unread_char(c);
             let car = self.read_sexp()?;
-            let mut result = vec![car];
-            let mut cdr = self.read_list()?;
+            let cdr = self.read_list()?;
 
-            result.append(&mut cdr);
-            Ok(result)
+            Ok(Rc::new(Obj::Pair(car, cdr)))
         }
     }
 

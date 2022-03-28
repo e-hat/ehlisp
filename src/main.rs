@@ -7,8 +7,8 @@ fn repl(stream: &mut parse::Stream) -> std::io::Result<()> {
     loop {
         print!("> ");
         io::stdout().flush()?;
-        let s = stream.read_sexp()?;
-        println!("{}", s);
+        let sexp = stream.read_sexp()?;
+        println!("{}", sexp);
     }
 }
 
