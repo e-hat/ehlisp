@@ -4,6 +4,7 @@ use std::io;
 use std::io::{Error, ErrorKind};
 use std::str;
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::ops::Deref;
 
 use regex::Regex;
@@ -41,7 +42,7 @@ pub enum Obj {
     Bool(bool),
     Local(String),
     Nil,
-    Pair(Rc<Obj>, Rc<Obj>),
+    Pair(Rc<RefCell<Obj>>, Rc<RefCell<Obj>>),
 }
 
 impl fmt::Display for Obj {
@@ -77,24 +78,27 @@ impl Obj {
     fn is_list(&self) -> bool {
         match self {
             Obj::Nil => true,
-            Obj::Pair(_, r) => r.is_list(),
+            Obj::Pair(_, r) => r.borrow().is_list(),
             _ => false,
         }
     }
 
     fn print_list(&self) -> String {
         match self {
-            Obj::Pair(l, rp) => match rp.deref() {
-                Obj::Nil => format!("{}", l),
-                r => format!("{} {}", l, r.print_list()),
-            },
+            Obj::Pair(l, rp) => { 
+                let child_ref = rp.deref().borrow();
+                let l_ref = l.deref().borrow();
+                match &*child_ref {
+                Obj::Nil => format!("{}", l_ref),
+                r => format!("{} {}", l_ref, r.print_list()),
+            }},
             _ => panic!("Inconceivable!"),
         }
     }
 
     fn print_pair(&self) -> String {
         match self {
-            Obj::Pair(l, r) => format!("{} . {}", l, r),
+            Obj::Pair(l, r) => format!("{} . {}", l.deref().borrow(), r.deref().borrow()),
             _ => panic!("Inconceivable!"),
         }
     }
@@ -109,19 +113,19 @@ impl Stream<'_> {
         }
     }
 
-    pub fn read_sexp(&mut self) -> io::Result<Rc<Obj>> {
+    pub fn read_sexp(&mut self) -> io::Result<Rc<RefCell<Obj>>> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if is_digit(c) || c == b'-' {
             self.unread_char(c);
-            self.read_num().map(|n| Rc::new(Obj::Fixnum(n)))
+            self.read_num().map(|n| Rc::new(RefCell::new(Obj::Fixnum(n))))
         } else if c == b'#' {
             self.unread_char(c);
-            self.read_bool().map(|b| Rc::new(Obj::Bool(b)))
+            self.read_bool().map(|b| Rc::new(RefCell::new(Obj::Bool(b))))
         } else if is_alpha(c) {
             self.unread_char(c);
-            self.read_id().map(|l| Rc::new(Obj::Local(l)))
+            self.read_id().map(|l| Rc::new(RefCell::new(Obj::Local(l))))
         } else if c == b'(' {
             self.read_list()
         } else {
@@ -129,18 +133,18 @@ impl Stream<'_> {
         }
     }
 
-    fn read_list(&mut self) -> io::Result<Rc<Obj>> {
+    fn read_list(&mut self) -> io::Result<Rc<RefCell<Obj>>> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if c == b')' {
-            Ok(Rc::new(Obj::Nil))
+            Ok(Rc::new(RefCell::new(Obj::Nil)))
         } else {
             self.unread_char(c);
             let car = self.read_sexp()?;
             let cdr = self.read_list()?;
 
-            Ok(Rc::new(Obj::Pair(car, cdr)))
+            Ok(Rc::new(RefCell::new(Obj::Pair(car, cdr))))
         }
     }
 

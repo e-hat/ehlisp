@@ -2,13 +2,14 @@ mod parse;
 
 use std::io;
 use std::io::Write;
+use std::ops::Deref;
 
 fn repl(stream: &mut parse::Stream) -> std::io::Result<()> {
     loop {
         print!("> ");
         io::stdout().flush()?;
         let sexp = stream.read_sexp()?;
-        println!("{}", sexp);
+        println!("{}", sexp.deref().borrow());
     }
 }
 
