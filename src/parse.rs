@@ -5,7 +5,6 @@ use std::io::{Error, ErrorKind};
 use std::str;
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::ops::Deref;
 
 use regex::Regex;
 
@@ -86,8 +85,8 @@ impl Obj {
     fn print_list(&self) -> String {
         match self {
             Obj::Pair(l, rp) => { 
-                let child_ref = rp.deref().borrow();
-                let l_ref = l.deref().borrow();
+                let child_ref = rp.borrow();
+                let l_ref = l.borrow();
                 match &*child_ref {
                 Obj::Nil => format!("{}", l_ref),
                 r => format!("{} {}", l_ref, r.print_list()),
@@ -98,7 +97,7 @@ impl Obj {
 
     fn print_pair(&self) -> String {
         match self {
-            Obj::Pair(l, r) => format!("{} . {}", l.deref().borrow(), r.deref().borrow()),
+            Obj::Pair(l, r) => format!("{} . {}", l.borrow(), r.borrow()),
             _ => panic!("Inconceivable!"),
         }
     }
