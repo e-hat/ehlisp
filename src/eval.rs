@@ -12,7 +12,7 @@ type EvalError = String;
 pub type Result<T> = std::result::Result<T, EvalError>;
 
 fn is_keyword(word: &str) -> bool {
-    return word == "val";
+    return word == "val" || word == "if";
 }
 
 fn invalid_control_flow(keyword: &str) -> EvalError {
@@ -40,60 +40,56 @@ impl Context {
     }
 
     fn eval_pair(&mut self, lst: Rc<RefCell<Obj>>) -> Result<Rc<RefCell<Obj>>> {
-        match &*lst.borrow() {
-            Obj::Pair(l, r) => {
-                if let Obj::Local(ref word) = *l.borrow() {
-                    if is_keyword(word) {
+        if let Obj::Pair(l, r) = &*lst.borrow() {
+            if let Obj::Local(ref word) = *l.borrow() {
+                if is_keyword(word) {
+                    if lst.borrow().is_list() {
                         self.eval_keyword(word, r.clone())
                     } else {
-                        self.eval_pair_normal(lst.clone())
+                        unreachable!()
                     }
                 } else {
                     self.eval_pair_normal(lst.clone())
                 }
+            } else {
+                self.eval_pair_normal(lst.clone())
             }
-            _ => unreachable!(),
+        } else {
+            unreachable!()
         }
     }
 
     fn eval_keyword(&mut self, keyword: &str, lst: Rc<RefCell<Obj>>) -> Result<Rc<RefCell<Obj>>> {
+        let items = lst.borrow().to_vec();
         match keyword {
-            "val" => {
-                if let Obj::Pair(ref lhs, ref rhs) = *lst.borrow() {
-                    self.eval_assignment(lhs.clone(), rhs.clone())
-                } else {
-                    Err(invalid_control_flow("val"))
-                }
-            }
+            "val" => self.eval_assignment(items),
             _ => unreachable!(),
         }
     }
 
-    fn eval_assignment(
-        &mut self,
-        lhs: Rc<RefCell<Obj>>,
-        rhs: Rc<RefCell<Obj>>,
-    ) -> Result<Rc<RefCell<Obj>>> {
-        if let Obj::Local(ref name) = *lhs.borrow() {
-            if self.env.contains_key(name) {
-                Err(format!("Object with name `{}` already exists", name))
-            } else {
-                if let Obj::Pair(rhs_stmt, nil) = &*rhs.borrow() {
-                    if let Obj::Nil = &*nil.borrow() {
-                        let result = self.eval(rhs_stmt.clone())?;
-                        self.env.insert(name.to_string(), result.clone());
-                        Ok(result.clone())
-                    } else {
-                        Err(invalid_control_flow("val"))
-                    }
-                } else {
-                    Err(invalid_control_flow("val"))
-                }
-            }
+    fn eval_assignment(&mut self, items: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+        if items.len() < 2 {
+            Err(invalid_control_flow("val"))
         } else {
-            Err(String::from(
-                "Expected an identifier as first element in `val` statement",
-            ))
+            let lhs = &items[0];
+            let rhs = &items[1];
+            if let Obj::Local(ref name) = *lhs.borrow() {
+                if self.env.contains_key(name) {
+                    Err(format!("Object with name `{}` already exists", name))
+                } else {
+                    let result = self.eval(rhs.clone())?;
+                    self.env.insert(name.to_string(), result.clone());
+                    if items.len() == 3 {
+                        self.eval(items[2].clone())
+                    } else {
+                        Ok(result.clone())
+                    }
+                }
+            } else {
+                Err(String::from(
+                    "Expected an identifier as first element in `val` statement",
+                ))
+            }
         }
     }
 

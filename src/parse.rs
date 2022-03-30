@@ -73,7 +73,7 @@ impl fmt::Display for Obj {
 }
 
 impl Obj {
-    fn is_list(&self) -> bool {
+    pub fn is_list(&self) -> bool {
         match self {
             Obj::Nil => true,
             Obj::Pair(_, r) => r.borrow().is_list(),
@@ -99,6 +99,19 @@ impl Obj {
         match self {
             Obj::Pair(l, r) => format!("{} . {}", l.borrow(), r.borrow()),
             _ => panic!("Inconceivable!"),
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<Rc<RefCell<Obj>>> {
+        match self {
+            Obj::Pair(car, cdr) => {
+                let mut res = vec![car.clone()];
+                let mut tail = cdr.borrow().to_vec();
+                res.append(&mut tail);
+                res
+            },
+            Obj::Nil => Vec::new(),
+            _ => unreachable!(),
         }
     }
 }
