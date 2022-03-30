@@ -12,7 +12,7 @@ type EvalError = String;
 pub type Result<T> = std::result::Result<T, EvalError>;
 
 fn is_keyword(word: &str) -> bool {
-    return word == "val" || word == "if";
+    return word == "val" || word == "if" || word == "env";
 }
 
 fn invalid_control_flow(keyword: &str) -> EvalError {
@@ -64,6 +64,7 @@ impl Context {
         match keyword {
             "val" => self.eval_assignment(items),
             "if" => self.eval_conditional(items),
+            "env" => self.eval_env(items),
             _ => unreachable!(),
         }
     }
@@ -82,7 +83,9 @@ impl Context {
                     self.eval(alt.clone())
                 }
             } else {
-                Err(String::from("if-conditional expects a `bool` result for predicate expression"))
+                Err(String::from(
+                    "if-conditional expects a `bool` result for predicate expression",
+                ))
             }
         }
     }
@@ -123,4 +126,36 @@ impl Context {
             unreachable!();
         }
     }
+
+    fn eval_env(&self, items: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+        if items.len() > 0 {
+            Err(invalid_control_flow("env"))
+        } else {
+            if self.env.is_empty() {
+                Ok(Rc::new(RefCell::new(Obj::Nil)))
+            } else {
+                let head = Rc::new(RefCell::new(Obj::Pair(
+                    Rc::new(RefCell::new(Obj::Nil)),
+                    Rc::new(RefCell::new(Obj::Nil)),
+                )));
+                let mut tail = head.clone();
+                for (name, stmt) in &self.env {
+                    let new_tail = Rc::new(RefCell::new(Obj::Nil));
+                    let new = Obj::Pair(
+                        Rc::new(RefCell::new(Obj::Pair(
+                            Rc::new(RefCell::new(Obj::Local(name.to_string()))),
+                            stmt.clone(),
+                        ))),
+                        new_tail.clone(),
+                    );
+                    tail.replace(new);
+                    tail = new_tail.clone();
+                }
+
+                Ok(head)
+            }
+        }
+    }
+}
+
 }
