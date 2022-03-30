@@ -1,10 +1,10 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::io::{Error, ErrorKind};
-use std::str;
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::str;
 
 use regex::Regex;
 
@@ -67,10 +67,9 @@ impl fmt::Display for Obj {
                 }
 
                 f.write_str(&format!("({})", res))
-            },
+            }
         }
     }
-
 }
 
 impl Obj {
@@ -84,13 +83,14 @@ impl Obj {
 
     fn print_list(&self) -> String {
         match self {
-            Obj::Pair(l, rp) => { 
+            Obj::Pair(l, rp) => {
                 let child_ref = rp.borrow();
                 let l_ref = l.borrow();
                 match &*child_ref {
-                Obj::Nil => format!("{}", l_ref),
-                r => format!("{} {}", l_ref, r.print_list()),
-            }},
+                    Obj::Nil => format!("{}", l_ref),
+                    r => format!("{} {}", l_ref, r.print_list()),
+                }
+            }
             _ => panic!("Inconceivable!"),
         }
     }
@@ -118,10 +118,12 @@ impl Stream<'_> {
         let c = self.read_char()?;
         if is_digit(c) || c == b'-' {
             self.unread_char(c);
-            self.read_num().map(|n| Rc::new(RefCell::new(Obj::Fixnum(n))))
+            self.read_num()
+                .map(|n| Rc::new(RefCell::new(Obj::Fixnum(n))))
         } else if c == b'#' {
             self.unread_char(c);
-            self.read_bool().map(|b| Rc::new(RefCell::new(Obj::Bool(b))))
+            self.read_bool()
+                .map(|b| Rc::new(RefCell::new(Obj::Bool(b))))
         } else if is_alpha(c) {
             self.unread_char(c);
             self.read_id().map(|l| Rc::new(RefCell::new(Obj::Local(l))))
