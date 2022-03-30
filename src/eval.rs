@@ -158,4 +158,24 @@ impl Context {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn trivial_eval() {
+        let mut ctx = Context::new();
+        
+        let fixnum = Rc::new(RefCell::new(Obj::Fixnum(42)));
+        let fixnum_res = ctx.eval(fixnum.clone()).unwrap();
+        assert_eq!(fixnum, fixnum_res);
+
+        let boolo = Rc::new(RefCell::new(Obj::Bool(true)));
+        let boolo_res = ctx.eval(boolo.clone()).unwrap();
+        assert_eq!(boolo, boolo_res);
+
+        let nil = Rc::new(RefCell::new(Obj::Nil));
+        let nil_res = ctx.eval(nil.clone()).unwrap();
+        assert_eq!(nil, nil_res);
+    }
 }

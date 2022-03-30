@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp::PartialEq;
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
@@ -72,6 +73,42 @@ impl fmt::Display for Obj {
     }
 }
 
+impl PartialEq for Obj {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Obj::Fixnum(l) => {
+                if let Obj::Fixnum(r) = other {
+                    l == r
+                } else {
+                    false
+                }
+            }
+            Obj::Bool(l) => {
+                if let Obj::Bool(r) = other {
+                    l == r
+                } else {
+                    false
+                }
+            }
+            Obj::Local(l) => {
+                if let Obj::Local(r) = other {
+                    l == r
+                } else {
+                    false
+                }
+            }
+            Obj::Nil => matches!(other, Obj::Nil),
+            Obj::Pair(lcar, lcdr) => {
+                if let Obj::Pair(rcar, rcdr) = other {
+                    lcar.borrow().eq(&rcar.borrow()) && lcdr.borrow().eq(&rcdr.borrow())
+                } else {
+                    false
+                }
+            },
+        }
+    }
+}
+
 impl Obj {
     pub fn is_list(&self) -> bool {
         match self {
@@ -109,7 +146,7 @@ impl Obj {
                 let mut tail = cdr.borrow().to_vec();
                 res.append(&mut tail);
                 res
-            },
+            }
             Obj::Nil => Vec::new(),
             _ => unreachable!(),
         }
