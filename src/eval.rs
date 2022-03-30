@@ -63,7 +63,27 @@ impl Context {
         let items = lst.borrow().to_vec();
         match keyword {
             "val" => self.eval_assignment(items),
+            "if" => self.eval_conditional(items),
             _ => unreachable!(),
+        }
+    }
+
+    fn eval_conditional(&mut self, items: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+        if items.len() != 3 {
+            Err(invalid_control_flow("val"))
+        } else {
+            let pred = &items[0];
+            let cons = &items[1];
+            let alt = &items[2];
+            if let Obj::Bool(pred_val) = *self.eval(pred.clone())?.borrow() {
+                if pred_val {
+                    self.eval(cons.clone())
+                } else {
+                    self.eval(alt.clone())
+                }
+            } else {
+                Err(String::from("if-conditional expects a `bool` result for predicate expression"))
+            }
         }
     }
 
