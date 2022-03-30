@@ -3,14 +3,18 @@ mod eval;
 
 use std::io;
 use std::io::Write;
+use std::io::{Error, ErrorKind};
 
-fn repl(stream: &mut parse::Stream) -> std::io::Result<()> {
+fn repl(stream: &mut parse::Stream) -> io::Result<()> {
+    let mut ctx = eval::Context::new();
     loop {
         print!("> ");
         io::stdout().flush()?;
         let sexp = stream.read_sexp()?;
-        let res = eval::eval(sexp);
-        println!("{}", res.borrow());
+        match ctx.eval(sexp) {
+            Ok(res) => println!("{}", res.borrow()),
+            Err(msg) => return Err(Error::new(ErrorKind::Other, msg))
+        }
     }
 }
 
