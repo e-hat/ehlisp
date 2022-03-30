@@ -1,5 +1,5 @@
-mod parse;
 mod eval;
+mod parse;
 
 use std::io;
 use std::io::Write;
@@ -13,7 +13,7 @@ fn repl(stream: &mut parse::Stream) -> io::Result<()> {
         let sexp = stream.read_sexp()?;
         match ctx.eval(sexp) {
             Ok(res) => println!("{}", res.borrow()),
-            Err(msg) => return Err(Error::new(ErrorKind::Other, msg))
+            Err(msg) => return Err(Error::new(ErrorKind::Other, msg)),
         }
     }
 }
