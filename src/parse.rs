@@ -104,7 +104,7 @@ impl PartialEq for Obj {
                 } else {
                     false
                 }
-            },
+            }
         }
     }
 }
@@ -149,6 +149,23 @@ impl Obj {
             }
             Obj::Nil => Vec::new(),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn from_vec(items: &Vec<Rc<RefCell<Obj>>>) -> Rc<RefCell<Obj>> {
+        if items.len() == 0 {
+            Rc::new(RefCell::new(Obj::Nil))
+        } else {
+            let head = Rc::new(RefCell::new(Obj::Nil));
+            let mut tail = head.clone();
+            for obj in items {
+                let new_tail = Rc::new(RefCell::new(Obj::Nil));
+                let new = Obj::Pair(obj.clone(), new_tail.clone());
+                tail.replace(new);
+                tail = new_tail.clone();
+            }
+
+            head
         }
     }
 }
