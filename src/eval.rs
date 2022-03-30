@@ -131,29 +131,17 @@ impl Context {
         if items.len() > 0 {
             Err(invalid_control_flow("env"))
         } else {
-            if self.env.is_empty() {
-                Ok(Rc::new(RefCell::new(Obj::Nil)))
-            } else {
-                let head = Rc::new(RefCell::new(Obj::Pair(
-                    Rc::new(RefCell::new(Obj::Nil)),
-                    Rc::new(RefCell::new(Obj::Nil)),
-                )));
-                let mut tail = head.clone();
-                for (name, stmt) in &self.env {
-                    let new_tail = Rc::new(RefCell::new(Obj::Nil));
-                    let new = Obj::Pair(
-                        Rc::new(RefCell::new(Obj::Pair(
-                            Rc::new(RefCell::new(Obj::Local(name.to_string()))),
-                            stmt.clone(),
-                        ))),
-                        new_tail.clone(),
-                    );
-                    tail.replace(new);
-                    tail = new_tail.clone();
-                }
-
-                Ok(head)
-            }
+            let env = self
+                .env
+                .iter()
+                .map(|(name, stmt)| {
+                    Rc::new(RefCell::new(Obj::Pair(
+                        Rc::new(RefCell::new(Obj::Local(name.to_string()))),
+                        stmt.clone(),
+                    )))
+                })
+                .collect();
+            Ok(Obj::from_vec(&env))
         }
     }
 }
@@ -161,11 +149,10 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use std::assert;
     #[test]
     fn trivial_eval() {
         let mut ctx = Context::new();
-        
         let fixnum = Rc::new(RefCell::new(Obj::Fixnum(42)));
         let fixnum_res = ctx.eval(fixnum.clone()).unwrap();
         assert_eq!(fixnum, fixnum_res);
@@ -177,5 +164,49 @@ mod tests {
         let nil = Rc::new(RefCell::new(Obj::Nil));
         let nil_res = ctx.eval(nil.clone()).unwrap();
         assert_eq!(nil, nil_res);
+    }
+
+    #[test]
+    fn eval_local() {
+        let mut ctx = Context::new();
+
+        let dne = Rc::new(RefCell::new(Obj::Local(String::from("dne"))));
+        if let Ok(_) = ctx.eval(dne.clone()) {
+            assert!(false, "Non-existent variable evaluation succeeded");
+        }
+
+        let mut failed_definition = Obj::from_vec(&vec![
+            Rc::new(RefCell::new(Obj::Local("val".to_string()))),
+            Rc::new(RefCell::new(Obj::Fixnum(0))),
+            Rc::new(RefCell::new(Obj::Fixnum(42))),
+        ]);
+        if let Ok(_) = ctx.eval(failed_definition.clone()) {
+            assert!(
+                false,
+                "Wrong type for lhs of assignment evaluated successfully"
+            );
+        }
+
+        failed_definition =
+            Obj::from_vec(&vec![Rc::new(RefCell::new(Obj::Local("val".to_string())))]);
+        if let Ok(_) = ctx.eval(failed_definition.clone()) {
+            assert!(
+                false,
+                "Bad control flow for assignment evaluated successfully"
+            );
+        }
+
+        let definition = Obj::from_vec(&vec![
+            Rc::new(RefCell::new(Obj::Local("val".to_string()))),
+            Rc::new(RefCell::new(Obj::Local("var".to_string()))),
+            Rc::new(RefCell::new(Obj::Fixnum(42))),
+        ]);
+        let definition_res = ctx.eval(definition.clone()).unwrap();
+        assert_eq!(definition_res, Rc::new(RefCell::new(Obj::Fixnum(42))));
+
+        let lookup_res = ctx
+            .eval(Rc::new(RefCell::new(Obj::Local("var".to_string()))))
+            .unwrap();
+        assert_eq!(lookup_res, Rc::new(RefCell::new(Obj::Fixnum(42))));
     }
 }
