@@ -8,14 +8,14 @@ pub struct Context {
     env: HashMap<String, Rc<RefCell<Obj>>>,
 }
 
-type EvalError = String;
-pub type Result<T> = std::result::Result<T, EvalError>;
+type Error = String;
+pub type Result<T> = std::result::Result<T, Error>;
 
 fn is_keyword(word: &str) -> bool {
     return word == "val" || word == "if" || word == "env";
 }
 
-fn invalid_control_flow(keyword: &str) -> EvalError {
+fn invalid_control_flow(keyword: &str) -> Error {
     format!("Invalid control flow in `{}` statement", keyword)
 }
 
