@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::fmt;
 
 use crate::parse::Obj;
 
@@ -37,6 +38,36 @@ pub enum Def {
 
 type Error = String;
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl fmt::Display for Ast {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ast::Literal(obj) => f.write_str(&format!("{}", obj.borrow())),
+            Ast::Var(name) => f.write_str(&format!("var: {}", name)),
+            Ast::If{pred, cons, alt} => f.write_str(&format!("if {}\nthen\n{}\nelse\n{}", pred.borrow(), cons.borrow(), alt.borrow())),
+            Ast::And{l, r} => f.write_str(&format!("({}) and ({})", l.borrow(), r.borrow())),
+            Ast::Or{l, r} => f.write_str(&format!("({}) or ({})", l.borrow(), r.borrow())),
+            Ast::Apply{l, r} => f.write_str(&format!("({}) apply ({})", l.borrow(), r.borrow())),
+            Ast::Call{f: func, args} => {
+                let mut arg_str = String::from(" ");
+                for arg in args {
+                    arg_str.push_str(&format!("{} ", arg.borrow()));
+                }
+                f.write_str(&format!("call ({}) ({})", func.borrow(), arg_str))
+            },
+            Ast::DefAst(def) => f.write_str(&format!("def {}", def))
+        }
+    }
+}
+
+impl fmt::Display for Def {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Def::Val{name, rhs} => f.write_str(&format!("let {} = {}", name, rhs.borrow())),
+            Def::Ast(ast) => f.write_str(&format!("{}", ast.borrow())),
+        }
+    }
+}
 
 impl Ast {
     pub fn from_sexp(sexp: Rc<RefCell<Obj>>) -> Result<Rc<RefCell<Ast>>> {
@@ -97,7 +128,29 @@ impl Ast {
                                     }
                                 }
                             }
+                            "apply" => {
+                                if items.len() != 3 || !items[2].borrow().is_list() {
+                                    Err("expected form (apply (fnexpr) (args list))".to_string())
+                                } else {
+                                    Ok(Rc::new(RefCell::new(Ast::Apply{
+                                        l: Ast::from_sexp(items[1].clone())?.clone(),
+                                        r: Ast::from_sexp(items[2].clone())?.clone(),
+                                    })))
+                                }
+                            }
+                            _ => {
+                                let mut args = Vec::new();
+                                args.reserve(items.len());
+                                for arg in items[1..].into_iter() {
+                                    args.push(Ast::from_sexp(arg.clone())?);
+                                }
+                                Ok(Rc::new(RefCell::new(Ast::Call{
+                                    f: Ast::from_sexp(items[0].clone())?,
+                                    args,
+                                })))
+                            }
                         }
+                        
                     } else {
                         let mut args = Vec::new();
                         args.reserve(items.len() - 1);
