@@ -179,7 +179,7 @@ impl Obj {
 }
 
 impl Stream<'_> {
-    pub fn new<'a>(stream: &'a mut dyn io::Read) -> Stream {
+    pub fn new<'a>(stream: &'a mut dyn io::Read) -> Stream<'a> {
         Stream {
             chars: VecDeque::new(),
             line_num: 0,
@@ -317,5 +317,33 @@ impl Stream<'_> {
             self.line_num -= 1;
         }
         self.chars.push_front(c);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::assert;
+
+    #[test] 
+    fn fixnum_positive() {
+        let input_str = String::from("1");
+        let mut input = input_str.as_bytes();
+        let mut stream = Stream::new(&mut input);
+
+        let res = stream.read_sexp();
+        assert!(!res.is_err(), "Line '1' did not parse successfully");
+        assert_eq!(res.unwrap(), Rc::new(RefCell::new(Obj::Fixnum(1))));
+    }
+
+    #[test]
+    fn fixnum_negative() {
+        let input_str = String::from("-1");
+        let mut input = input_str.as_bytes();
+        let mut stream = Stream::new(&mut input);
+
+        let res = stream.read_sexp();
+        assert!(!res.is_err(), "Line `-1` did not parse successfully");
+        assert_eq!(res.unwrap(), Rc::new(RefCell::new(Obj::Fixnum(-1))));
     }
 }
