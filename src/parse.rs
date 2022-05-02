@@ -23,8 +23,8 @@ fn is_digit(c: u8) -> bool {
     c >= b'0' && c <= b'9'
 }
 
-fn is_alpha(c: u8) -> bool {
-    let re = Regex::new(r"[a-zA-Z]").unwrap();
+fn is_id_viable(c: u8) -> bool {
+    let re = Regex::new(r"[^\s\d\(\)]").unwrap();
 
     re.is_match(str::from_utf8(&[c]).unwrap())
 }
@@ -191,7 +191,7 @@ impl Stream<'_> {
             self.unread_char(c);
             self.read_bool()
                 .map(|b| Rc::new(RefCell::new(Obj::Bool(b))))
-        } else if is_alpha(c) {
+        } else if is_id_viable(c) {
             self.unread_char(c);
             self.read_id().map(|l| Rc::new(RefCell::new(Obj::Local(l))))
         } else if c == b'(' {
@@ -217,7 +217,7 @@ impl Stream<'_> {
     }
 
     fn read_id(&mut self) -> io::Result<String> {
-        let re = Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]*$").unwrap();
+        let re = Regex::new(r"^[^\s\d\(\)]*$").unwrap();
 
         self.expect_pattern(&re)
     }
