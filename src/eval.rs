@@ -19,11 +19,40 @@ fn invalid_control_flow(keyword: &str) -> Error {
     format!("Invalid control flow in `{}` statement", keyword)
 }
 
+// Expects args to be completely evaluated -- aka it will fail if not passed only Fixnum's
+fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    if args.len() <= 1 {
+        Err(String::from("Expected more than one argument to '+'"))
+    } else {
+        let mut sum: i32 = 0;
+        for arg in args.iter() {
+            if let Obj::Fixnum(n) = *arg.borrow() {
+                sum += n;
+            } else {
+                return Err(format!(
+                    "Expected fixnum as parameter to '+', got: {}",
+                    arg.borrow()
+                ));
+            }
+        }
+
+        Ok(Rc::new(RefCell::new(Obj::Fixnum(sum))))
+    }
+}
+
+fn basis_env() -> HashMap<String, Rc<RefCell<Obj>>> {
+    let mut res: HashMap<String, Rc<RefCell<Obj>>> = HashMap::new();
+    res.insert(
+        String::from("+"),
+        Rc::new(RefCell::new(Obj::Primitive(String::from("+"), prim_plus))),
+    );
+
+    res
+}
+
 impl Context {
     pub fn new() -> Self {
-        Context {
-            env: HashMap::new(),
-        }
+        Context { env: basis_env() }
     }
 
     pub fn eval(&mut self, stmt: Rc<RefCell<Obj>>) -> Result<Rc<RefCell<Obj>>> {
@@ -31,11 +60,12 @@ impl Context {
             Obj::Fixnum(_) => Ok(stmt.clone()),
             Obj::Nil => Ok(stmt.clone()),
             Obj::Bool(_) => Ok(stmt.clone()),
+            Obj::Primitive(_, _) => Ok(stmt.clone()),
             Obj::Local(ref l) => match self.env.get(l) {
                 Some(res) => Ok(res.clone()),
                 None => Err(format!("Non-existent local `{}` referenced", l)),
             },
-            _ => self.eval_pair(stmt.clone()),
+            Obj::Pair(_, _) => self.eval_pair(stmt.clone()),
         }
     }
 
@@ -49,7 +79,22 @@ impl Context {
                         unreachable!()
                     }
                 } else {
-                    self.eval_pair_normal(lst.clone())
+                    match *self.eval(l.clone())?.borrow() {
+                        Obj::Primitive(_, f) => {
+                            let as_vec = lst
+                                .borrow()
+                                .to_vec()
+                                .iter()
+                                .map(|x| self.eval(x.clone()))
+                                .collect::<Result<Vec<_>>>()?;
+
+                            f(as_vec[1..].to_vec())
+                        }
+                        _ => Err(format!(
+                            "primitive {} does not exist (apply func args)",
+                            word
+                        )),
+                    }
                 }
             } else {
                 self.eval_pair_normal(lst.clone())

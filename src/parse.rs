@@ -9,6 +9,8 @@ use std::str;
 
 use regex::Regex;
 
+use crate::eval::Result as EvalResult;
+
 pub struct Stream<'a> {
     chars: VecDeque<u8>,
     line_num: i32,
@@ -43,6 +45,10 @@ pub enum Obj {
     Local(String),
     Nil,
     Pair(Rc<RefCell<Obj>>, Rc<RefCell<Obj>>),
+    Primitive(
+        String,
+        fn(Vec<Rc<RefCell<Obj>>>) -> EvalResult<Rc<RefCell<Obj>>>,
+    ),
 }
 
 impl fmt::Display for Obj {
@@ -69,6 +75,7 @@ impl fmt::Display for Obj {
 
                 f.write_str(&format!("({})", res))
             }
+            Obj::Primitive(name, _) => f.write_str(&format!("#<primitive:{}>", name)),
         }
     }
 }
@@ -105,6 +112,7 @@ impl PartialEq for Obj {
                     false
                 }
             }
+            Obj::Primitive(_, _) => false,
         }
     }
 }
