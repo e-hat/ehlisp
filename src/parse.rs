@@ -325,25 +325,47 @@ mod tests {
     use super::*;
     use std::assert;
 
-    #[test] 
-    fn fixnum_positive() {
-        let input_str = String::from("1");
-        let mut input = input_str.as_bytes();
-        let mut stream = Stream::new(&mut input);
-
-        let res = stream.read_sexp();
-        assert!(!res.is_err(), "Line '1' did not parse successfully");
-        assert_eq!(res.unwrap(), Rc::new(RefCell::new(Obj::Fixnum(1))));
+    macro_rules! wrap {
+        ($x:expr) => {
+            Rc::new(RefCell::new($x))
+        };
     }
 
-    #[test]
-    fn fixnum_negative() {
-        let input_str = String::from("-1");
-        let mut input = input_str.as_bytes();
-        let mut stream = Stream::new(&mut input);
+    macro_rules! gen_test_case {
+        ($name:ident, $input:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let input_str = String::from($input);
+                let mut input = input_str.as_bytes();
+                let mut stream = Stream::new(&mut input);
 
-        let res = stream.read_sexp();
-        assert!(!res.is_err(), "Line `-1` did not parse successfully");
-        assert_eq!(res.unwrap(), Rc::new(RefCell::new(Obj::Fixnum(-1))));
+                let res = stream.read_sexp();
+                assert!(!res.is_err());
+                assert_eq!(res.unwrap(), $expected);
+            }
+        };
     }
+
+    gen_test_case!(fixnum_positive, "1", wrap!(Obj::Fixnum(1)));
+    gen_test_case!(fixnum_negative, "-1", wrap!(Obj::Fixnum(-1)));
+
+    gen_test_case!(bool_true, "#t", wrap!(Obj::Bool(true)));
+    gen_test_case!(bool_false, "#f", wrap!(Obj::Bool(false)));
+
+    gen_test_case!(
+        local,
+        "+-/\\whatever_^%$#@!&*[]{}:;'\"\n",
+        wrap!(Obj::Local(String::from("+-/\\whatever_^%$#@!&*[]{}:;'\"")))
+    );
+
+    gen_test_case!(nil, "()", wrap!(Obj::Nil));
+    gen_test_case!(
+        pair,
+        "(42 69 420)",
+        Obj::from_vec(&vec![
+            Rc::new(RefCell::new(Obj::Fixnum(42))),
+            Rc::new(RefCell::new(Obj::Fixnum(69))),
+            Rc::new(RefCell::new(Obj::Fixnum(420)))
+        ])
+    );
 }
