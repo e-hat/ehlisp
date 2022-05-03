@@ -84,7 +84,8 @@ impl Ast {
             Obj::Bool(_) => Ok(Rc::new(RefCell::new(Ast::Literal(sexp.clone())))),
             Obj::Local(name) => Ok(Rc::new(RefCell::new(Ast::Var(name.to_string())))),
             Obj::Nil => Ok(Rc::new(RefCell::new(Ast::Literal(sexp.clone())))),
-            _ => {
+            Obj::Primitive(f, _) => Err(format!("Unexpected Primitive sexp '{}'", f)),
+            Obj::Pair(_, _) => {
                 if sexp.borrow().is_list() {
                     let items = sexp.borrow().to_vec();
                     // A previous pattern match proved that this sexp is NOT Obj::Nil
@@ -239,14 +240,14 @@ impl PartialEq for Ast {
                 } else {
                     false
                 }
-            },
+            }
             Ast::DefAst(l) => {
                 if let Ast::DefAst(r) = other {
                     l == r
                 } else {
                     false
                 }
-            },
+            }
         }
     }
 }
@@ -254,20 +255,27 @@ impl PartialEq for Ast {
 impl PartialEq for Def {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            Def::Val{name: lname, rhs: lrhs} => {
-                if let Def::Val{name: rname, rhs: rrhs} = other {
+            Def::Val {
+                name: lname,
+                rhs: lrhs,
+            } => {
+                if let Def::Val {
+                    name: rname,
+                    rhs: rrhs,
+                } = other
+                {
                     lname == rname && lrhs == rrhs
                 } else {
                     false
                 }
-            },
+            }
             Def::Ast(l) => {
                 if let Def::Ast(r) = other {
                     l == r
                 } else {
                     false
                 }
-            },
+            }
         }
     }
 }
@@ -296,9 +304,73 @@ mod tests {
         };
     }
 
-    gen_test_case!(fixnum, "0", wrap!(Ast::Literal(wrap!(Obj::Fixnum(0)))));
-    gen_test_case!(boolean, "#t", wrap!(Ast::Literal(wrap!(Obj::Bool(true)))));
-    gen_test_case!(nil, "()", wrap!(Ast::Literal(wrap!(Obj::Nil))));
-    
+    macro_rules! lit_wrap {
+        ($x:expr) => {
+            wrap!(Ast::Literal(wrap!($x)))
+        };
+    }
+
+    gen_test_case!(fixnum, "0", lit_wrap!(Obj::Fixnum(0)));
+    gen_test_case!(boolean, "#t", lit_wrap!(Obj::Bool(true)));
+    gen_test_case!(nil, "()", lit_wrap!(Obj::Nil));
+
     gen_test_case!(local, "hello\n", wrap!(Ast::Var("hello".to_string())));
+
+    gen_test_case!(
+        val,
+        "(val x 5)",
+        wrap!(Ast::DefAst(Def::Val {
+            name: "x".to_string(),
+            rhs: lit_wrap!(Obj::Fixnum(5)),
+        }))
+    );
+    gen_test_case!(
+        conditional,
+        "(if #t 5 6)",
+        wrap!(Ast::If {
+            pred: lit_wrap!(Obj::Bool(true)),
+            cons: lit_wrap!(Obj::Fixnum(5)),
+            alt: lit_wrap!(Obj::Fixnum(6)),
+        })
+    );
+    gen_test_case!(
+        and,
+        "(and #t #f)",
+        wrap!(Ast::And {
+            l: lit_wrap!(Obj::Bool(true)),
+            r: lit_wrap!(Obj::Bool(false)),
+        })
+    );
+    gen_test_case!(
+        or,
+        "(or #t #f)",
+        wrap!(Ast::Or {
+            l: lit_wrap!(Obj::Bool(true)),
+            r: lit_wrap!(Obj::Bool(false)),
+        })
+    );
+    gen_test_case!(
+        apply,
+        "(apply f ())",
+        wrap!(Ast::Apply {
+            l: wrap!(Ast::Var("f".to_string())),
+            r: lit_wrap!(Obj::Nil),
+        })
+    );
+    gen_test_case!(
+        call_with_fixnum_first,
+        "(1 2 3)",
+        wrap!(Ast::Call {
+            f: lit_wrap!(Obj::Fixnum(1)),
+            args: vec![lit_wrap!(Obj::Fixnum(2)), lit_wrap!(Obj::Fixnum(3))],
+        })
+    );
+    gen_test_case!(
+        call,
+        "(f 1 2)",
+        wrap!(Ast::Call {
+            f: wrap!(Ast::Var("f".to_string())),
+            args: vec![lit_wrap!(Obj::Fixnum(1)), lit_wrap!(Obj::Fixnum(2))],
+        })
+    );
 }
