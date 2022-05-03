@@ -22,7 +22,7 @@ fn invalid_control_flow(keyword: &str) -> Error {
 // Expects args to be completely evaluated -- aka it will fail if not passed only Fixnum's
 fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     if args.len() <= 1 {
-        Err(String::from("Expected more than one argument to '+'"))
+        Err(String::from("Expected at least two arguments for '+'"))
     } else {
         let mut sum: i32 = 0;
         for arg in args.iter() {
@@ -40,11 +40,30 @@ fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     }
 }
 
+fn prim_pair(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    if args.len() != 2 {
+        Err(String::from("Expected two arguments for 'pair'"))
+    } else {
+        Ok(Rc::new(RefCell::new(Obj::Pair(
+            args[0].clone(),
+            args[1].clone(),
+        ))))
+    }
+}
+
 fn basis_env() -> HashMap<String, Rc<RefCell<Obj>>> {
     let mut res: HashMap<String, Rc<RefCell<Obj>>> = HashMap::new();
     res.insert(
         String::from("+"),
         Rc::new(RefCell::new(Obj::Primitive(String::from("+"), prim_plus))),
+    );
+
+    res.insert(
+        String::from("pair"),
+        Rc::new(RefCell::new(Obj::Primitive(
+            String::from("pair"),
+            prim_pair,
+        ))),
     );
 
     res
