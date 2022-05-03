@@ -38,12 +38,14 @@ fn unexpected(c: u8) -> Error {
     );
 }
 
+#[macro_export]
 macro_rules! wrap {
     ($x:expr) => {
         Rc::new(RefCell::new($x))
     };
 }
 
+#[macro_export]
 macro_rules! wrap_t {
     ($x:ident) => {
         Rc<RefCell<$x>>
