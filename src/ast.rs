@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use crate::parse::Obj;
 
+#[derive(Debug)]
 pub enum Ast {
     Literal(Rc<RefCell<Obj>>),
     Var(String),
@@ -32,6 +33,7 @@ pub enum Ast {
     DefAst(Def),
 }
 
+#[derive(Debug)]
 pub enum Def {
     Val { name: String, rhs: Rc<RefCell<Ast>> },
     Ast(Rc<RefCell<Ast>>),
@@ -275,6 +277,28 @@ mod tests {
     use super::*;
     use std::assert;
 
-    #[test]
-    fn test() {}
+    use crate::parse::*;
+    use crate::wrap;
+
+    macro_rules! gen_test_case {
+        ($name:ident, $input:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let input_str = String::from($input);
+                let mut input = input_str.as_bytes();
+                let mut stream = Stream::new(&mut input);
+
+                let parse_res = stream.read_sexp().unwrap();
+                let res = Ast::from_sexp(parse_res);
+                assert!(!res.is_err());
+                assert_eq!(res.unwrap(), $expected);
+            }
+        };
+    }
+
+    gen_test_case!(fixnum, "0", wrap!(Ast::Literal(wrap!(Obj::Fixnum(0)))));
+    gen_test_case!(boolean, "#t", wrap!(Ast::Literal(wrap!(Obj::Bool(true)))));
+    gen_test_case!(nil, "()", wrap!(Ast::Literal(wrap!(Obj::Nil))));
+    
+    gen_test_case!(local, "hello\n", wrap!(Ast::Var("hello".to_string())));
 }
