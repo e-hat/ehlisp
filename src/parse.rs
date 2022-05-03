@@ -38,16 +38,28 @@ fn unexpected(c: u8) -> Error {
     );
 }
 
+macro_rules! wrap {
+    ($x:expr) => {
+        Rc::new(RefCell::new($x))
+    };
+}
+
+macro_rules! wrap_t {
+    ($x:ident) => {
+        Rc<RefCell<$x>>
+    };
+}
+
 #[derive(Debug)]
 pub enum Obj {
     Fixnum(i32),
     Bool(bool),
     Local(String),
     Nil,
-    Pair(Rc<RefCell<Obj>>, Rc<RefCell<Obj>>),
+    Pair(wrap_t!(Obj), wrap_t!(Obj)),
     Primitive(
         String,
-        fn(Vec<Rc<RefCell<Obj>>>) -> EvalResult<Rc<RefCell<Obj>>>,
+        fn(Vec<wrap_t!(Obj)>) -> EvalResult<wrap_t!(Obj)>,
     ),
 }
 
@@ -147,7 +159,7 @@ impl Obj {
         }
     }
 
-    pub fn to_vec(&self) -> Vec<Rc<RefCell<Obj>>> {
+    pub fn to_vec(&self) -> Vec<wrap_t!(Obj)> {
         match self {
             Obj::Pair(car, cdr) => {
                 let mut res = vec![car.clone()];
@@ -160,14 +172,14 @@ impl Obj {
         }
     }
 
-    pub fn from_vec(items: &Vec<Rc<RefCell<Obj>>>) -> Rc<RefCell<Obj>> {
+    pub fn from_vec(items: &Vec<wrap_t!(Obj)>) -> wrap_t!(Obj) {
         if items.len() == 0 {
-            Rc::new(RefCell::new(Obj::Nil))
+            wrap!(Obj::Nil)
         } else {
-            let head = Rc::new(RefCell::new(Obj::Nil));
+            let head = wrap!(Obj::Nil);
             let mut tail = head.clone();
             for obj in items {
-                let new_tail = Rc::new(RefCell::new(Obj::Nil));
+                let new_tail = wrap!(Obj::Nil);
                 let new = Obj::Pair(obj.clone(), new_tail.clone());
                 tail.replace(new);
                 tail = new_tail.clone();
@@ -187,21 +199,21 @@ impl Stream<'_> {
         }
     }
 
-    pub fn read_sexp(&mut self) -> io::Result<Rc<RefCell<Obj>>> {
+    pub fn read_sexp(&mut self) -> io::Result<wrap_t!(Obj)> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if is_digit(c) || c == b'-' {
             self.unread_char(c);
             self.read_num()
-                .map(|n| Rc::new(RefCell::new(Obj::Fixnum(n))))
+                .map(|n| wrap!(Obj::Fixnum(n)))
         } else if c == b'#' {
             self.unread_char(c);
             self.read_bool()
-                .map(|b| Rc::new(RefCell::new(Obj::Bool(b))))
+                .map(|b| wrap!(Obj::Bool(b)))
         } else if is_id_viable(c) {
             self.unread_char(c);
-            self.read_id().map(|l| Rc::new(RefCell::new(Obj::Local(l))))
+            self.read_id().map(|l| wrap!(Obj::Local(l)))
         } else if c == b'(' {
             self.read_list()
         } else {
@@ -209,18 +221,18 @@ impl Stream<'_> {
         }
     }
 
-    fn read_list(&mut self) -> io::Result<Rc<RefCell<Obj>>> {
+    fn read_list(&mut self) -> io::Result<wrap_t!(Obj)> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if c == b')' {
-            Ok(Rc::new(RefCell::new(Obj::Nil)))
+            Ok(wrap!(Obj::Nil))
         } else {
             self.unread_char(c);
             let car = self.read_sexp()?;
             let cdr = self.read_list()?;
 
-            Ok(Rc::new(RefCell::new(Obj::Pair(car, cdr))))
+            Ok(wrap!(Obj::Pair(car, cdr)))
         }
     }
 
@@ -325,12 +337,6 @@ mod tests {
     use super::*;
     use std::assert;
 
-    macro_rules! wrap {
-        ($x:expr) => {
-            Rc::new(RefCell::new($x))
-        };
-    }
-
     macro_rules! gen_test_case {
         ($name:ident, $input:expr, $expected:expr) => {
             #[test]
@@ -363,9 +369,9 @@ mod tests {
         pair,
         "(42 69 420)",
         Obj::from_vec(&vec![
-            Rc::new(RefCell::new(Obj::Fixnum(42))),
-            Rc::new(RefCell::new(Obj::Fixnum(69))),
-            Rc::new(RefCell::new(Obj::Fixnum(420)))
+            wrap!(Obj::Fixnum(42)),
+            wrap!(Obj::Fixnum(69)),
+            wrap!(Obj::Fixnum(420))
         ])
     );
 }
