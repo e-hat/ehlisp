@@ -1,6 +1,6 @@
+mod ast;
 mod eval;
 mod parse;
-mod ast;
 
 use std::io;
 use std::io::Write;
@@ -11,9 +11,12 @@ fn repl(stream: &mut parse::Stream) -> io::Result<()> {
     loop {
         print!("> ");
         io::stdout().flush()?;
-        let sexp = stream.read_sexp()?;
-        match ctx.eval(sexp) {
-            Ok(res) => println!("{}", res.borrow()),
+        let input = stream.read_sexp()?;
+        match ast::Ast::from_sexp(input.clone()) {
+            Ok(sexp) => match ctx.eval(sexp) {
+                Ok(res) => println!("{}", res.borrow()),
+                Err(msg) => return Err(Error::new(ErrorKind::Other, msg)),
+            },
             Err(msg) => return Err(Error::new(ErrorKind::Other, msg)),
         }
     }
