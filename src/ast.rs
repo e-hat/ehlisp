@@ -53,15 +53,15 @@ impl fmt::Display for Ast {
                 cons.borrow(),
                 alt.borrow()
             )),
-            Ast::And { l, r } => f.write_str(&format!("({}) and ({})", l.borrow(), r.borrow())),
-            Ast::Or { l, r } => f.write_str(&format!("({}) or ({})", l.borrow(), r.borrow())),
-            Ast::Apply { l, r } => f.write_str(&format!("({}) apply ({})", l.borrow(), r.borrow())),
+            Ast::And { l, r } => f.write_str(&format!("( {} ) and ( {} )", l.borrow(), r.borrow())),
+            Ast::Or { l, r } => f.write_str(&format!("( {} ) or ( {} )", l.borrow(), r.borrow())),
+            Ast::Apply { l, r } => f.write_str(&format!("( {} ) apply ( {} )", l.borrow(), r.borrow())),
             Ast::Call { f: func, args } => {
                 let mut arg_str = String::from(" ");
                 for arg in args {
                     arg_str.push_str(&format!("{} ", arg.borrow()));
                 }
-                f.write_str(&format!("call ({}) ({})", func.borrow(), arg_str))
+                f.write_str(&format!("call ( {} ) ({})", func.borrow(), arg_str))
             }
             Ast::DefAst(def) => f.write_str(&format!("def {}", def)),
         }
