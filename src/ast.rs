@@ -444,7 +444,7 @@ mod tests {
         })
     );
     test_case!(
-        lambda_with_incorrect_formal,
+        lambda_with_fixnum_formal,
         failure,
         "(lambda (5) 5)"
     );

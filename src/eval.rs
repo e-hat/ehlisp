@@ -9,7 +9,7 @@ use crate::{wrap, wrap_t};
 pub type Env = HashMap<String, Option<wrap_t!(Obj)>>;
 
 pub struct Context {
-    env: HashMap<String, Rc<RefCell<Obj>>>,
+    env: Env,
 }
 
 type Error = String;
@@ -48,21 +48,21 @@ fn prim_list(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     Ok(Obj::from_vec(&args))
 }
 
-fn basis_env() -> HashMap<String, Rc<RefCell<Obj>>> {
-    let mut res: HashMap<String, Rc<RefCell<Obj>>> = HashMap::new();
+fn basis_env() -> Env {
+    let mut res: Env = HashMap::new();
     res.insert(
         String::from("+"),
-        wrap!(Obj::Primitive(String::from("+"), prim_plus)),
+        Some(wrap!(Obj::Primitive(String::from("+"), prim_plus))),
     );
 
     res.insert(
         String::from("pair"),
-        wrap!(Obj::Primitive(String::from("pair"), prim_pair)),
+        Some(wrap!(Obj::Primitive(String::from("pair"), prim_pair))),
     );
 
     res.insert(
         String::from("list"),
-        wrap!(Obj::Primitive(String::from("list"), prim_list)),
+        Some(wrap!(Obj::Primitive(String::from("list"), prim_list))),
     );
 
     res
@@ -71,6 +71,10 @@ fn basis_env() -> HashMap<String, Rc<RefCell<Obj>>> {
 impl Context {
     pub fn new() -> Self {
         Context { env: basis_env() }
+    }
+
+    pub fn from(env: Env) -> Self {
+        Context { env }
     }
 
     pub fn eval(&mut self, ast: Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
@@ -83,17 +87,16 @@ impl Context {
 
     fn eval_ast(&mut self, ast: Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
         match &*ast.borrow() {
-            Ast::Lambda{ .. } => unimplemented!(),
             Ast::Literal(l) => {
                 if let Obj::Quote(inner) = &*l.borrow() {
                     Ok(inner.clone())
                 } else {
                     Ok(l.clone())
                 }
-            },
+            }
             Ast::Var(name) => match self.env.get(name) {
-                Some(rhs) => Ok(rhs.clone()),
-                None => Err(format!(
+                Some(Some(rhs)) => Ok(rhs.clone()),
+                _ => Err(format!(
                     "Variable '{}' does not exist in the current environment",
                     name
                 )),
@@ -121,7 +124,7 @@ impl Context {
                 (Obj::Bool(l_res), Obj::Bool(r_res)) => Ok(wrap!(Obj::Bool(*l_res && *r_res))),
                 _ => Err("Type error: (or bool bool)".to_string()),
             },
-            Ast::Apply { l, r } => match &*self.eval(l.clone())?.borrow() {
+            Ast::Apply { l, r } => match &mut *self.eval(l.clone())?.borrow_mut() {
                 Obj::Primitive(_, func) => {
                     let args = self.eval(r.clone())?;
                     if args.borrow().is_list() {
@@ -129,7 +132,25 @@ impl Context {
                     } else {
                         Err("Type Error: expected list as argument to function call".to_string())
                     }
-                }
+                },
+                Obj::Closure{ formal_args, rhs, env } => {
+                    let actuals_obj = self.eval(r.clone())?;
+                    if actuals_obj.borrow().is_list() {
+                        // TODO: Investigate making a temp of the environment, altering the
+                        // existing environment, evaluating and saving the result, setting the
+                        // environment equal to the original saved in temp, then returning the
+                        // result -- is this better/faster than what is happening here?
+                        let actuals = actuals_obj.borrow().to_vec();
+                        let mut env_copy = env.clone();
+                        for (formal, actual) in formal_args.iter().zip(actuals.iter()) {
+                            env_copy.insert(formal.clone(), Some(actual.clone()));
+                        }
+
+                        Context::from(env_copy).eval(rhs.clone())
+                    } else {
+                        Err("Type Error: expected list as argument to function call".to_string())
+                    }
+                },
                 _ => Err("Type Error: (apply prim '(args))".to_string()),
             },
             Ast::Call { f, args } => match &*self.eval(f.clone())?.borrow() {
@@ -139,9 +160,22 @@ impl Context {
                         .map(|x| self.eval(x.clone()))
                         .collect::<Result<Vec<_>>>()?;
                     func(obj_args)
-                }
+                },
+                Obj::Closure{ formal_args, rhs, env } => {
+                    let mut env_copy = env.clone();
+                    for (formal, actual) in formal_args.iter().zip(args.iter()) {
+                        env_copy.insert(formal.clone(), Some(self.eval(actual.clone())?));
+                    }
+
+                    Context::from(env_copy).eval(rhs.clone())
+                },
                 _ => Err("Type Error: (f args)".to_string()),
             },
+            Ast::Lambda { formal_args, rhs } => Ok(wrap!(Obj::Closure {
+                formal_args: formal_args.clone(),
+                rhs: rhs.clone(),
+                env: self.env.clone()
+            })),
             Ast::DefAst(_) => unreachable!(),
         }
     }
@@ -150,7 +184,7 @@ impl Context {
         match def {
             Def::Val { name, rhs } => {
                 let res = self.eval(rhs.clone())?;
-                self.env.insert(name.clone(), res.clone());
+                self.env.insert(name.clone(), Some(res.clone()));
                 Ok(res)
             }
             Def::Ast(ast) => self.eval(ast.clone()),
@@ -257,7 +291,14 @@ mod tests {
 
     test_case!(call_wrong_type, failure, "(1 2 3)");
 
-    test_case!(apply_with_list, "(apply + (list 1 2))", wrap!(Obj::Fixnum(3)));
+    test_case!(
+        apply_with_list,
+        "(apply + (list 1 2))",
+        wrap!(Obj::Fixnum(3))
+    );
     test_case!(apply_with_quote, "(apply + '(1 2))", wrap!(Obj::Fixnum(3)));
     test_case!(apply_plus_with_empty_args, failure, "(apply + '())");
+
+    test_case!(closure_assign_to_var, ["(val add-one (lambda (x) (+ x 1)))"], "(add-one 0)", wrap!(Obj::Fixnum(1)));
+    test_case!(closure_called_in_closure, ["(val add-one (lambda (x) (+ x 1)))"], "(add-one (add-one 0))", wrap!(Obj::Fixnum(2)));
 }
