@@ -42,6 +42,10 @@ fn prim_pair(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     }
 }
 
+fn prim_list(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    Ok(Obj::from_vec(&args))
+}
+
 fn basis_env() -> HashMap<String, Rc<RefCell<Obj>>> {
     let mut res: HashMap<String, Rc<RefCell<Obj>>> = HashMap::new();
     res.insert(
@@ -51,7 +55,12 @@ fn basis_env() -> HashMap<String, Rc<RefCell<Obj>>> {
 
     res.insert(
         String::from("pair"),
-        wrap!(Obj::Primitive(String::from("pair"), prim_pair,)),
+        wrap!(Obj::Primitive(String::from("pair"), prim_pair)),
+    );
+
+    res.insert(
+        String::from("list"),
+        wrap!(Obj::Primitive(String::from("list"), prim_list)),
     );
 
     res
@@ -213,4 +222,28 @@ mod tests {
 
     test_case!(nonexistent_local, failure, "x\n");
     test_case!(local, ["(val x 5)"], "x\n", wrap!(Obj::Fixnum(5)));
+
+    test_case!(plus, "(+ 1 2)", wrap!(Obj::Fixnum(3)));
+    test_case!(wrong_types_plus, failure, "(+ #t #f)");
+    test_case!(wrong_num_args_plus, failure, "(+ 0)");
+
+    test_case!(
+        pair,
+        "(pair 1 2)",
+        wrap!(Obj::Pair(wrap!(Obj::Fixnum(1)), wrap!(Obj::Fixnum(2))))
+    );
+    test_case!(wrong_num_args_pair, failure, "(pair 1)");
+
+    test_case!(
+        list,
+        "(list 1 2 3)",
+        Obj::from_vec(&vec![
+            wrap!(Obj::Fixnum(1)),
+            wrap!(Obj::Fixnum(2)),
+            wrap!(Obj::Fixnum(3))
+        ])
+    );
+    test_case!(empty_list, "(list)", wrap!(Obj::Nil));
+
+    test_case!(call_wrong_type, failure, "(1 2 3)");
 }
