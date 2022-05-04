@@ -4,6 +4,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::parse::Obj;
+use crate::wrap;
 
 #[derive(Debug)]
 pub enum Ast {
@@ -80,10 +81,11 @@ impl fmt::Display for Def {
 impl Ast {
     pub fn from_sexp(sexp: Rc<RefCell<Obj>>) -> Result<Rc<RefCell<Ast>>> {
         match &*sexp.borrow() {
-            Obj::Fixnum(_) => Ok(Rc::new(RefCell::new(Ast::Literal(sexp.clone())))),
-            Obj::Bool(_) => Ok(Rc::new(RefCell::new(Ast::Literal(sexp.clone())))),
-            Obj::Local(name) => Ok(Rc::new(RefCell::new(Ast::Var(name.to_string())))),
-            Obj::Nil => Ok(Rc::new(RefCell::new(Ast::Literal(sexp.clone())))),
+            Obj::Fixnum(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
+            Obj::Bool(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
+            Obj::Local(name) => Ok(wrap!(Ast::Var(name.to_string()))),
+            Obj::Nil => Ok(wrap!(Ast::Literal(sexp.clone()))),
+            Obj::Quote(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
             Obj::Primitive(f, _) => Err(format!("Unexpected Primitive sexp '{}'", f)),
             Obj::Pair(_, _) => {
                 if sexp.borrow().is_list() {
@@ -96,31 +98,31 @@ impl Ast {
                                 if items.len() != 4 {
                                     Err("expected form (if (pred) (cons) (alt))".to_string())
                                 } else {
-                                    Ok(Rc::new(RefCell::new(Ast::If {
+                                    Ok(wrap!(Ast::If {
                                         pred: Ast::from_sexp(items[1].clone())?,
                                         cons: Ast::from_sexp(items[2].clone())?,
                                         alt: Ast::from_sexp(items[3].clone())?,
-                                    })))
+                                    }))
                                 }
                             }
                             "and" => {
                                 if items.len() != 3 {
                                     Err("expected form (and (l) (r))".to_string())
                                 } else {
-                                    Ok(Rc::new(RefCell::new(Ast::And {
+                                    Ok(wrap!(Ast::And {
                                         l: Ast::from_sexp(items[1].clone())?,
                                         r: Ast::from_sexp(items[2].clone())?,
-                                    })))
+                                    }))
                                 }
                             }
                             "or" => {
                                 if items.len() != 3 {
                                     Err("expected form (or (l) (r))".to_string())
                                 } else {
-                                    Ok(Rc::new(RefCell::new(Ast::Or {
+                                    Ok(wrap!(Ast::Or {
                                         l: Ast::from_sexp(items[1].clone())?,
                                         r: Ast::from_sexp(items[2].clone())?,
-                                    })))
+                                    }))
                                 }
                             }
                             "val" => {
@@ -128,23 +130,23 @@ impl Ast {
                                     Err("expected form (val (name) (expr))".to_string())
                                 } else {
                                     if let Obj::Local(name) = &*items[1].borrow() {
-                                        Ok(Rc::new(RefCell::new(Ast::DefAst(Def::Val {
+                                        Ok(wrap!(Ast::DefAst(Def::Val {
                                             name: name.to_string(),
                                             rhs: Ast::from_sexp(items[2].clone())?,
-                                        }))))
+                                        })))
                                     } else {
                                         Err("expected `name` to be a string in form (val (name) (expr))".to_string())
                                     }
                                 }
                             }
                             "apply" => {
-                                if items.len() != 3 || !items[2].borrow().is_list() {
+                                if items.len() != 3 {
                                     Err("expected form (apply (fnexpr) (args list))".to_string())
                                 } else {
-                                    Ok(Rc::new(RefCell::new(Ast::Apply {
+                                    Ok(wrap!(Ast::Apply {
                                         l: Ast::from_sexp(items[1].clone())?.clone(),
                                         r: Ast::from_sexp(items[2].clone())?.clone(),
-                                    })))
+                                    }))
                                 }
                             }
                             _ => {
@@ -153,10 +155,10 @@ impl Ast {
                                 for arg in items[1..].into_iter() {
                                     args.push(Ast::from_sexp(arg.clone())?);
                                 }
-                                Ok(Rc::new(RefCell::new(Ast::Call {
+                                Ok(wrap!(Ast::Call {
                                     f: Ast::from_sexp(items[0].clone())?,
                                     args,
-                                })))
+                                }))
                             }
                         }
                     } else {
@@ -165,15 +167,15 @@ impl Ast {
                         for arg in items[1..].into_iter() {
                             args.push(Ast::from_sexp(arg.clone())?);
                         }
-                        Ok(Rc::new(RefCell::new(Ast::Call {
+                        Ok(wrap!(Ast::Call {
                             f: Ast::from_sexp(items[0].clone())?,
                             args,
-                        })))
+                        }))
                     };
                     x
                 } else {
                     // TODO: How does this work?
-                    Ok(Rc::new(RefCell::new(Ast::Literal(sexp.clone()))))
+                    Ok(wrap!(Ast::Literal(sexp.clone())))
                 }
             }
         }

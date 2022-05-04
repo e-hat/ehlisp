@@ -59,10 +59,8 @@ pub enum Obj {
     Local(String),
     Nil,
     Pair(wrap_t!(Obj), wrap_t!(Obj)),
-    Primitive(
-        String,
-        fn(Vec<wrap_t!(Obj)>) -> EvalResult<wrap_t!(Obj)>,
-    ),
+    Primitive(String, fn(Vec<wrap_t!(Obj)>) -> EvalResult<wrap_t!(Obj)>),
+    Quote(wrap_t!(Obj)),
 }
 
 impl fmt::Display for Obj {
@@ -90,6 +88,7 @@ impl fmt::Display for Obj {
                 f.write_str(&format!("({})", res))
             }
             Obj::Primitive(name, _) => f.write_str(&format!("#<primitive:{}>", name)),
+            Obj::Quote(inner) => f.write_str(&format!("'{}", inner.borrow())),
         }
     }
 }
@@ -127,6 +126,13 @@ impl PartialEq for Obj {
                 }
             }
             Obj::Primitive(_, _) => false,
+            Obj::Quote(self_inner) => {
+                if let Obj::Quote(other_inner) = other {
+                    self_inner == other_inner
+                } else {
+                    false
+                }
+            }
         }
     }
 }
@@ -207,12 +213,12 @@ impl Stream<'_> {
         let c = self.read_char()?;
         if is_digit(c) || c == b'-' {
             self.unread_char(c);
-            self.read_num()
-                .map(|n| wrap!(Obj::Fixnum(n)))
+            self.read_num().map(|n| wrap!(Obj::Fixnum(n)))
         } else if c == b'#' {
             self.unread_char(c);
-            self.read_bool()
-                .map(|b| wrap!(Obj::Bool(b)))
+            self.read_bool().map(|b| wrap!(Obj::Bool(b)))
+        } else if c == b'\'' {
+            self.read_sexp().map(|q| wrap!(Obj::Quote(q)))
         } else if is_id_viable(c) {
             self.unread_char(c);
             self.read_id().map(|l| wrap!(Obj::Local(l)))
@@ -376,4 +382,6 @@ mod tests {
             wrap!(Obj::Fixnum(420))
         ])
     );
+
+    test_case!(quote, "'a'\n", wrap!(Obj::Quote(wrap!(Obj::Local("a'".to_string())))));
 }

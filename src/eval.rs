@@ -81,7 +81,13 @@ impl Context {
 
     fn eval_ast(&mut self, ast: Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
         match &*ast.borrow() {
-            Ast::Literal(l) => Ok(l.clone()),
+            Ast::Literal(l) => {
+                if let Obj::Quote(inner) = &*l.borrow() {
+                    Ok(inner.clone())
+                } else {
+                    Ok(l.clone())
+                }
+            },
             Ast::Var(name) => match self.env.get(name) {
                 Some(rhs) => Ok(rhs.clone()),
                 None => Err(format!(
@@ -219,6 +225,7 @@ mod tests {
     test_case!(trivial_fixnum, "0", wrap!(Obj::Fixnum(0)));
     test_case!(trivial_bool, "#t", wrap!(Obj::Bool(true)));
     test_case!(trivial_nil, "()", wrap!(Obj::Nil));
+    test_case!(trivial_quote, "'a\n", wrap!(Obj::Local("a".to_string())));
 
     test_case!(nonexistent_local, failure, "x\n");
     test_case!(local, ["(val x 5)"], "x\n", wrap!(Obj::Fixnum(5)));
@@ -246,4 +253,8 @@ mod tests {
     test_case!(empty_list, "(list)", wrap!(Obj::Nil));
 
     test_case!(call_wrong_type, failure, "(1 2 3)");
+
+    test_case!(apply_with_list, "(apply + (list 1 2))", wrap!(Obj::Fixnum(3)));
+    test_case!(apply_with_quote, "(apply + '(1 2))", wrap!(Obj::Fixnum(3)));
+    test_case!(apply_plus_with_empty_args, failure, "(apply + '())");
 }
