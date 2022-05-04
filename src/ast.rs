@@ -4,40 +4,44 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::parse::Obj;
-use crate::wrap;
+use crate::{wrap, wrap_t};
 
 #[derive(Debug)]
 pub enum Ast {
-    Literal(Rc<RefCell<Obj>>),
+    Literal(wrap_t!(Obj)),
     Var(String),
     If {
-        pred: Rc<RefCell<Ast>>,
-        cons: Rc<RefCell<Ast>>,
-        alt: Rc<RefCell<Ast>>,
+        pred: wrap_t!(Ast),
+        cons: wrap_t!(Ast),
+        alt: wrap_t!(Ast),
     },
     And {
-        l: Rc<RefCell<Ast>>,
-        r: Rc<RefCell<Ast>>,
+        l: wrap_t!(Ast),
+        r: wrap_t!(Ast),
     },
     Or {
-        l: Rc<RefCell<Ast>>,
-        r: Rc<RefCell<Ast>>,
+        l: wrap_t!(Ast),
+        r: wrap_t!(Ast),
     },
     Apply {
-        l: Rc<RefCell<Ast>>,
-        r: Rc<RefCell<Ast>>,
+        l: wrap_t!(Ast),
+        r: wrap_t!(Ast),
     },
     Call {
-        f: Rc<RefCell<Ast>>,
-        args: Vec<Rc<RefCell<Ast>>>,
+        f: wrap_t!(Ast),
+        args: Vec<wrap_t!(Ast)>,
+    },
+    Lambda {
+        formal_args: Vec<String>,
+        rhs: wrap_t!(Ast),
     },
     DefAst(Def),
 }
 
 #[derive(Debug)]
 pub enum Def {
-    Val { name: String, rhs: Rc<RefCell<Ast>> },
-    Ast(Rc<RefCell<Ast>>),
+    Val { name: String, rhs: wrap_t!(Ast) },
+    Ast(wrap_t!(Ast)),
 }
 
 type Error = String;
@@ -56,7 +60,9 @@ impl fmt::Display for Ast {
             )),
             Ast::And { l, r } => f.write_str(&format!("( {} ) and ( {} )", l.borrow(), r.borrow())),
             Ast::Or { l, r } => f.write_str(&format!("( {} ) or ( {} )", l.borrow(), r.borrow())),
-            Ast::Apply { l, r } => f.write_str(&format!("( {} ) apply ( {} )", l.borrow(), r.borrow())),
+            Ast::Apply { l, r } => {
+                f.write_str(&format!("( {} ) apply ( {} )", l.borrow(), r.borrow()))
+            }
             Ast::Call { f: func, args } => {
                 let mut arg_str = String::from(" ");
                 for arg in args {
@@ -65,6 +71,7 @@ impl fmt::Display for Ast {
                 f.write_str(&format!("call ( {} ) ({})", func.borrow(), arg_str))
             }
             Ast::DefAst(def) => f.write_str(&format!("def {}", def)),
+            Ast::Lambda { .. } => f.write_str(&format!("#<lambda>")),
         }
     }
 }
@@ -79,7 +86,7 @@ impl fmt::Display for Def {
 }
 
 impl Ast {
-    pub fn from_sexp(sexp: Rc<RefCell<Obj>>) -> Result<Rc<RefCell<Ast>>> {
+    pub fn from_sexp(sexp: wrap_t!(Obj)) -> Result<wrap_t!(Ast)> {
         match &*sexp.borrow() {
             Obj::Fixnum(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
             Obj::Bool(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
@@ -87,7 +94,8 @@ impl Ast {
             Obj::Nil => Ok(wrap!(Ast::Literal(sexp.clone()))),
             Obj::Quote(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
             Obj::Primitive(f, _) => Err(format!("Unexpected Primitive sexp '{}'", f)),
-            Obj::Pair(_, _) => {
+            Obj::Closure { .. } => Err("Unexpected closure".to_string()),
+            Obj::Pair(..) => {
                 if sexp.borrow().is_list() {
                     let items = sexp.borrow().to_vec();
                     // A previous pattern match proved that this sexp is NOT Obj::Nil
@@ -146,6 +154,31 @@ impl Ast {
                                     Ok(wrap!(Ast::Apply {
                                         l: Ast::from_sexp(items[1].clone())?.clone(),
                                         r: Ast::from_sexp(items[2].clone())?.clone(),
+                                    }))
+                                }
+                            }
+                            "lambda" => {
+                                if items.len() != 3 || !items[1].borrow().is_list() {
+                                    Err("expected form (lambda (formal args) body)".to_string())
+                                } else {
+                                    let formal_args: Vec<String> = items[1]
+                                        .borrow()
+                                        .to_vec()
+                                        .iter()
+                                        .map(|x| {
+                                            if let Obj::Local(name) = &*x.borrow() {
+                                                Ok(name.clone())
+                                            } else {
+                                                Err(format!(
+                                                    "Got '{}' as formal arg to lambda",
+                                                    x.borrow()
+                                                ))
+                                            }
+                                        })
+                                        .collect::<Result<Vec<_>>>()?;
+                                    Ok(wrap!(Ast::Lambda {
+                                        formal_args,
+                                        rhs: Ast::from_sexp(items[2].clone())?.clone(),
                                     }))
                                 }
                             }
@@ -243,6 +276,20 @@ impl PartialEq for Ast {
                     false
                 }
             }
+            Ast::Lambda {
+                formal_args: lformals,
+                rhs: lrhs,
+            } => {
+                if let Ast::Lambda {
+                    formal_args: rformals,
+                    rhs: rrhs,
+                } = other
+                {
+                    lformals == rformals && lrhs == rrhs
+                } else {
+                    false
+                }
+            }
             Ast::DefAst(l) => {
                 if let Ast::DefAst(r) = other {
                     l == r
@@ -291,6 +338,18 @@ mod tests {
     use crate::wrap;
 
     macro_rules! test_case {
+        ($name:ident, failure, $input:expr) => {
+            #[test]
+            fn $name() {
+                let input_str = String::from($input);
+                let mut input = input_str.as_bytes();
+                let mut stream = Stream::new(&mut input);
+
+                let parse_res = stream.read_sexp().unwrap();
+                let res = Ast::from_sexp(parse_res);
+                assert!(res.is_err());
+            }
+        };
         ($name:ident, $input:expr, $expected:expr) => {
             #[test]
             fn $name() {
@@ -374,5 +433,19 @@ mod tests {
             f: wrap!(Ast::Var("f".to_string())),
             args: vec![lit_wrap!(Obj::Fixnum(1)), lit_wrap!(Obj::Fixnum(2))],
         })
+    );
+
+    test_case!(
+        lambda,
+        "(lambda (x) 5)",
+        wrap!(Ast::Lambda {
+            formal_args: vec!["x".to_string()],
+            rhs: lit_wrap!(Obj::Fixnum(5)),
+        })
+    );
+    test_case!(
+        lambda_with_incorrect_formal,
+        failure,
+        "(lambda (5) 5)"
     );
 }

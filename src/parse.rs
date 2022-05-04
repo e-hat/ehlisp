@@ -9,7 +9,8 @@ use std::str;
 
 use regex::Regex;
 
-use crate::eval::Result as EvalResult;
+use crate::ast::Ast;
+use crate::eval::{Env, Result as EvalResult};
 
 pub struct Stream<'a> {
     chars: VecDeque<u8>,
@@ -61,6 +62,11 @@ pub enum Obj {
     Pair(wrap_t!(Obj), wrap_t!(Obj)),
     Primitive(String, fn(Vec<wrap_t!(Obj)>) -> EvalResult<wrap_t!(Obj)>),
     Quote(wrap_t!(Obj)),
+    Closure {
+        formal_args: Vec<String>,
+        rhs: wrap_t!(Ast),
+        env: Env,
+    },
 }
 
 impl fmt::Display for Obj {
@@ -89,6 +95,7 @@ impl fmt::Display for Obj {
             }
             Obj::Primitive(name, _) => f.write_str(&format!("#<primitive:{}>", name)),
             Obj::Quote(inner) => f.write_str(&format!("'{}", inner.borrow())),
+            Obj::Closure { .. } => f.write_str("#<closure>"),
         }
     }
 }
@@ -129,6 +136,22 @@ impl PartialEq for Obj {
             Obj::Quote(self_inner) => {
                 if let Obj::Quote(other_inner) = other {
                     self_inner == other_inner
+                } else {
+                    false
+                }
+            }
+            Obj::Closure {
+                formal_args,
+                rhs,
+                env,
+            } => {
+                if let Obj::Closure {
+                    formal_args: formal_args_other,
+                    rhs: rhs_other,
+                    env: env_other,
+                } = other
+                {
+                    formal_args == formal_args_other && rhs == rhs_other && env == env_other
                 } else {
                     false
                 }
@@ -383,5 +406,9 @@ mod tests {
         ])
     );
 
-    test_case!(quote, "'a'\n", wrap!(Obj::Quote(wrap!(Obj::Local("a'".to_string())))));
+    test_case!(
+        quote,
+        "'a'\n",
+        wrap!(Obj::Quote(wrap!(Obj::Local("a'".to_string()))))
+    );
 }

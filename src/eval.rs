@@ -4,7 +4,9 @@ use std::rc::Rc;
 
 use crate::ast::{Ast, Def};
 use crate::parse::Obj;
-use crate::wrap;
+use crate::{wrap, wrap_t};
+
+pub type Env = HashMap<String, Option<wrap_t!(Obj)>>;
 
 pub struct Context {
     env: HashMap<String, Rc<RefCell<Obj>>>,
@@ -81,6 +83,7 @@ impl Context {
 
     fn eval_ast(&mut self, ast: Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
         match &*ast.borrow() {
+            Ast::Lambda{ .. } => unimplemented!(),
             Ast::Literal(l) => {
                 if let Obj::Quote(inner) = &*l.borrow() {
                     Ok(inner.clone())
