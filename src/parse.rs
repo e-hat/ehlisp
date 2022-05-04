@@ -339,7 +339,7 @@ mod tests {
     use super::*;
     use std::assert;
 
-    macro_rules! gen_test_case {
+    macro_rules! test_case {
         ($name:ident, $input:expr, $expected:expr) => {
             #[test]
             fn $name() {
@@ -354,20 +354,20 @@ mod tests {
         };
     }
 
-    gen_test_case!(fixnum_positive, "1", wrap!(Obj::Fixnum(1)));
-    gen_test_case!(fixnum_negative, "-1", wrap!(Obj::Fixnum(-1)));
+    test_case!(fixnum_positive, "1", wrap!(Obj::Fixnum(1)));
+    test_case!(fixnum_negative, "-1", wrap!(Obj::Fixnum(-1)));
 
-    gen_test_case!(bool_true, "#t", wrap!(Obj::Bool(true)));
-    gen_test_case!(bool_false, "#f", wrap!(Obj::Bool(false)));
+    test_case!(bool_true, "#t", wrap!(Obj::Bool(true)));
+    test_case!(bool_false, "#f", wrap!(Obj::Bool(false)));
 
-    gen_test_case!(
+    test_case!(
         local,
         "+-/\\whatever_^%$#@!&*[]{}:;'\"\n",
         wrap!(Obj::Local(String::from("+-/\\whatever_^%$#@!&*[]{}:;'\"")))
     );
 
-    gen_test_case!(nil, "()", wrap!(Obj::Nil));
-    gen_test_case!(
+    test_case!(nil, "()", wrap!(Obj::Nil));
+    test_case!(
         pair,
         "(42 69 420)",
         Obj::from_vec(&vec![

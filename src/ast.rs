@@ -288,7 +288,7 @@ mod tests {
     use crate::parse::*;
     use crate::wrap;
 
-    macro_rules! gen_test_case {
+    macro_rules! test_case {
         ($name:ident, $input:expr, $expected:expr) => {
             #[test]
             fn $name() {
@@ -310,13 +310,13 @@ mod tests {
         };
     }
 
-    gen_test_case!(fixnum, "0", lit_wrap!(Obj::Fixnum(0)));
-    gen_test_case!(boolean, "#t", lit_wrap!(Obj::Bool(true)));
-    gen_test_case!(nil, "()", lit_wrap!(Obj::Nil));
+    test_case!(fixnum, "0", lit_wrap!(Obj::Fixnum(0)));
+    test_case!(boolean, "#t", lit_wrap!(Obj::Bool(true)));
+    test_case!(nil, "()", lit_wrap!(Obj::Nil));
 
-    gen_test_case!(local, "hello\n", wrap!(Ast::Var("hello".to_string())));
+    test_case!(local, "hello\n", wrap!(Ast::Var("hello".to_string())));
 
-    gen_test_case!(
+    test_case!(
         val,
         "(val x 5)",
         wrap!(Ast::DefAst(Def::Val {
@@ -324,7 +324,7 @@ mod tests {
             rhs: lit_wrap!(Obj::Fixnum(5)),
         }))
     );
-    gen_test_case!(
+    test_case!(
         conditional,
         "(if #t 5 6)",
         wrap!(Ast::If {
@@ -333,7 +333,7 @@ mod tests {
             alt: lit_wrap!(Obj::Fixnum(6)),
         })
     );
-    gen_test_case!(
+    test_case!(
         and,
         "(and #t #f)",
         wrap!(Ast::And {
@@ -341,7 +341,7 @@ mod tests {
             r: lit_wrap!(Obj::Bool(false)),
         })
     );
-    gen_test_case!(
+    test_case!(
         or,
         "(or #t #f)",
         wrap!(Ast::Or {
@@ -349,7 +349,7 @@ mod tests {
             r: lit_wrap!(Obj::Bool(false)),
         })
     );
-    gen_test_case!(
+    test_case!(
         apply,
         "(apply f ())",
         wrap!(Ast::Apply {
@@ -357,7 +357,7 @@ mod tests {
             r: lit_wrap!(Obj::Nil),
         })
     );
-    gen_test_case!(
+    test_case!(
         call_with_fixnum_first,
         "(1 2 3)",
         wrap!(Ast::Call {
@@ -365,7 +365,7 @@ mod tests {
             args: vec![lit_wrap!(Obj::Fixnum(2)), lit_wrap!(Obj::Fixnum(3))],
         })
     );
-    gen_test_case!(
+    test_case!(
         call,
         "(f 1 2)",
         wrap!(Ast::Call {

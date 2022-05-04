@@ -139,3 +139,53 @@ impl Context {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::assert;
+
+    use crate::parse::*;
+    use crate::wrap;
+
+    macro_rules! test_case {
+        ($name:ident, $input:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let input_str = String::from($input);
+                let mut input = input_str.as_bytes();
+                let mut stream = Stream::new(&mut input);
+
+                let parse_res = stream.read_sexp().unwrap();
+                let ast_res = Ast::from_sexp(parse_res).unwrap();
+
+                let mut ctx = Context::new();
+                let res = ctx.eval(ast_res.clone());
+                assert!(!res.is_err());
+                assert_eq!(res.unwrap(), $expected);
+            }
+        };
+    }
+
+    macro_rules! failure_case {
+        ($name:ident, $input:expr) => {
+            #[test]
+            fn $name() {
+                let input_str = String::from($input);
+                let mut input = input_str.as_bytes();
+                let mut stream = Stream::new(&mut input);
+
+                let parse_res = stream.read_sexp().unwrap();
+                let ast_res = Ast::from_sexp(parse_res).unwrap();
+
+                let mut ctx = Context::new();
+                let res = ctx.eval(ast_res.clone());
+                assert!(res.is_err());
+            }
+        };
+    }
+
+    test_case!(trivial_fixnum, "0", wrap!(Obj::Fixnum(0)));
+    test_case!(trivial_bool, "#t", wrap!(Obj::Bool(true)));
+    test_case!(trivial_nil, "()", wrap!(Obj::Nil));
+}
