@@ -149,14 +149,29 @@ mod tests {
     use crate::wrap;
 
     macro_rules! test_case {
+        ($name:ident, failure, $input:expr) => {
+            #[test]
+            fn $name() {
+                let input_str = String::from($input);
+                let mut input = input_str.as_bytes();
+                let mut stream = Stream::new(&mut input);
+                let parse_res = stream.read_sexp().unwrap();
+
+                let ast_res = Ast::from_sexp(parse_res).unwrap();
+
+                let mut ctx = Context::new();
+                let res = ctx.eval(ast_res.clone());
+                assert!(res.is_err());
+            }
+        };
         ($name:ident, $input:expr, $expected:expr) => {
             #[test]
             fn $name() {
                 let input_str = String::from($input);
                 let mut input = input_str.as_bytes();
                 let mut stream = Stream::new(&mut input);
-
                 let parse_res = stream.read_sexp().unwrap();
+
                 let ast_res = Ast::from_sexp(parse_res).unwrap();
 
                 let mut ctx = Context::new();
@@ -165,22 +180,29 @@ mod tests {
                 assert_eq!(res.unwrap(), $expected);
             }
         };
-    }
-
-    macro_rules! failure_case {
-        ($name:ident, $input:expr) => {
+        ($name:ident, $prep_steps:expr, $input:expr, $expected:expr) => {
             #[test]
             fn $name() {
+                let mut ctx = Context::new();
+                for step in $prep_steps {
+                    let input_str = String::from(step);
+                    let mut input = input_str.as_bytes();
+                    let mut stream = Stream::new(&mut input);
+                    let parse_res = stream.read_sexp().unwrap();
+
+                    let ast_res = Ast::from_sexp(parse_res).unwrap();
+                    assert!(!ctx.eval(ast_res.clone()).is_err());
+                }
+
                 let input_str = String::from($input);
                 let mut input = input_str.as_bytes();
                 let mut stream = Stream::new(&mut input);
-
                 let parse_res = stream.read_sexp().unwrap();
-                let ast_res = Ast::from_sexp(parse_res).unwrap();
 
-                let mut ctx = Context::new();
+                let ast_res = Ast::from_sexp(parse_res).unwrap();
                 let res = ctx.eval(ast_res.clone());
-                assert!(res.is_err());
+                assert!(!res.is_err());
+                assert_eq!(res.unwrap(), $expected);
             }
         };
     }
@@ -188,4 +210,7 @@ mod tests {
     test_case!(trivial_fixnum, "0", wrap!(Obj::Fixnum(0)));
     test_case!(trivial_bool, "#t", wrap!(Obj::Bool(true)));
     test_case!(trivial_nil, "()", wrap!(Obj::Nil));
+
+    test_case!(nonexistent_local, failure, "x\n");
+    test_case!(local, ["(val x 5)"], "x\n", wrap!(Obj::Fixnum(5)));
 }
