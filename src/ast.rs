@@ -6,6 +6,9 @@ use std::rc::Rc;
 use crate::parse::Obj;
 use crate::{wrap, wrap_t};
 
+// A representation of expressions/programs that lends itself better to traversal and evaluation.
+// This is instead of evaluating the S-expressions directly, which means a lot of headaches with
+// verifying valid forms and whatnot.
 #[derive(Debug)]
 pub enum Ast {
     Literal(wrap_t!(Obj)),
@@ -38,6 +41,8 @@ pub enum Ast {
     DefAst(Def),
 }
 
+// This is for ASTs that change the evaluation's environment. I don't think we need this Def::Ast
+// alternative.
 #[derive(Debug)]
 pub enum Def {
     Val { name: String, rhs: wrap_t!(Ast) },
@@ -47,45 +52,12 @@ pub enum Def {
 type Error = String;
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl fmt::Display for Ast {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Ast::Literal(obj) => f.write_str(&format!("{}", obj.borrow())),
-            Ast::Var(name) => f.write_str(&format!("var: {}", name)),
-            Ast::If { pred, cons, alt } => f.write_str(&format!(
-                "if {}\nthen\n{}\nelse\n{}",
-                pred.borrow(),
-                cons.borrow(),
-                alt.borrow()
-            )),
-            Ast::And { l, r } => f.write_str(&format!("( {} ) and ( {} )", l.borrow(), r.borrow())),
-            Ast::Or { l, r } => f.write_str(&format!("( {} ) or ( {} )", l.borrow(), r.borrow())),
-            Ast::Apply { l, r } => {
-                f.write_str(&format!("( {} ) apply ( {} )", l.borrow(), r.borrow()))
-            }
-            Ast::Call { f: func, args } => {
-                let mut arg_str = String::from(" ");
-                for arg in args {
-                    arg_str.push_str(&format!("{} ", arg.borrow()));
-                }
-                f.write_str(&format!("call ( {} ) ({})", func.borrow(), arg_str))
-            }
-            Ast::DefAst(def) => f.write_str(&format!("def {}", def)),
-            Ast::Lambda { .. } => f.write_str(&format!("#<lambda>")),
-        }
-    }
-}
-
-impl fmt::Display for Def {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Def::Val { name, rhs } => f.write_str(&format!("let {} = {}", name, rhs.borrow())),
-            Def::Ast(ast) => f.write_str(&format!("{}", ast.borrow())),
-        }
-    }
-}
-
 impl Ast {
+    // Translating S-expressions to the AST type. The input is expected to come from the parsing stage of
+    // the REPL, so we will fail if we encounter Obj::Primitive's or Obj::Closure's, which only appear
+    // during evaluation. This is also where special forms are built. I don't think `and` or `or`
+    // should be handled here, as they are not special forms and make more sense as primitives. I'm
+    // on the fence about `lambda` and `apply`, but they seem kinda special.
     pub fn from_sexp(sexp: wrap_t!(Obj)) -> Result<wrap_t!(Ast)> {
         match &*sexp.borrow() {
             Obj::Fixnum(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
@@ -96,6 +68,7 @@ impl Ast {
             Obj::Primitive(f, _) => Err(format!("Unexpected Primitive sexp '{}'", f)),
             Obj::Closure { .. } => Err("Unexpected closure".to_string()),
             Obj::Pair(..) => {
+                // Handle special forms here
                 if sexp.borrow().is_list() {
                     let items = sexp.borrow().to_vec();
                     // A previous pattern match proved that this sexp is NOT Obj::Nil
@@ -195,6 +168,8 @@ impl Ast {
                             }
                         }
                     } else {
+                        // This is the case where the function itself is not a simple variable
+                        // name.
                         let mut args = Vec::new();
                         args.reserve(items.len() - 1);
                         for arg in items[1..].into_iter() {
@@ -207,10 +182,49 @@ impl Ast {
                     };
                     x
                 } else {
-                    // TODO: How does this work?
+                    // We won't ever end up here, as there's no way for the user to input pairs
+                    // without calling the `pair` function. Maybe I should use `unreachable!()`
                     Ok(wrap!(Ast::Literal(sexp.clone())))
                 }
             }
+        }
+    }
+}
+
+impl fmt::Display for Ast {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ast::Literal(obj) => f.write_str(&format!("{}", obj.borrow())),
+            Ast::Var(name) => f.write_str(&format!("var: {}", name)),
+            Ast::If { pred, cons, alt } => f.write_str(&format!(
+                "if {}\nthen\n{}\nelse\n{}",
+                pred.borrow(),
+                cons.borrow(),
+                alt.borrow()
+            )),
+            Ast::And { l, r } => f.write_str(&format!("( {} ) and ( {} )", l.borrow(), r.borrow())),
+            Ast::Or { l, r } => f.write_str(&format!("( {} ) or ( {} )", l.borrow(), r.borrow())),
+            Ast::Apply { l, r } => {
+                f.write_str(&format!("( {} ) apply ( {} )", l.borrow(), r.borrow()))
+            }
+            Ast::Call { f: func, args } => {
+                let mut arg_str = String::from(" ");
+                for arg in args {
+                    arg_str.push_str(&format!("{} ", arg.borrow()));
+                }
+                f.write_str(&format!("call ( {} ) ({})", func.borrow(), arg_str))
+            }
+            Ast::DefAst(def) => f.write_str(&format!("def {}", def)),
+            Ast::Lambda { .. } => f.write_str(&format!("#<lambda>")),
+        }
+    }
+}
+
+impl fmt::Display for Def {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Def::Val { name, rhs } => f.write_str(&format!("let {} = {}", name, rhs.borrow())),
+            Def::Ast(ast) => f.write_str(&format!("{}", ast.borrow())),
         }
     }
 }
@@ -443,9 +457,5 @@ mod tests {
             rhs: lit_wrap!(Obj::Fixnum(5)),
         })
     );
-    test_case!(
-        lambda_with_fixnum_formal,
-        failure,
-        "(lambda (5) 5)"
-    );
+    test_case!(lambda_with_fixnum_formal, failure, "(lambda (5) 5)");
 }

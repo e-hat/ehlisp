@@ -15,6 +15,9 @@ pub struct Context {
 type Error = String;
 pub type Result<T> = std::result::Result<T, Error>;
 
+// PRIMITIVE FUNCTIONS -- similar to closures, but they do not depend on any other existing
+// environment objects.
+
 // Expects args to be completely evaluated -- aka it will fail if not passed only Fixnum's
 fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     if args.len() <= 1 {
@@ -48,6 +51,7 @@ fn prim_list(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     Ok(Obj::from_vec(&args))
 }
 
+// Defines the environment that evaluation begins with.
 fn basis_env() -> Env {
     let mut res: Env = HashMap::new();
     res.insert(

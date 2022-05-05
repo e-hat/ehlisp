@@ -12,11 +12,14 @@ use regex::Regex;
 use crate::ast::Ast;
 use crate::eval::{Env, Result as EvalResult};
 
+// Stream that is parsed from
 pub struct Stream<'a> {
     chars: VecDeque<u8>,
     line_num: i32,
     stream: &'a mut dyn io::Read,
 }
+
+// Random parsing helpers
 
 fn is_whitespace(c: u8) -> bool {
     c == b' ' || c == b'\n' || c == b'\t'
@@ -39,6 +42,9 @@ fn unexpected(c: u8) -> Error {
     );
 }
 
+// I already have a lot of uses of Rc::new(RefCel::new()) and Rc<RefCell<>> throughout the
+// codebase, but I try to replace them with these macros where I can, since it was driving me
+// nuts.
 #[macro_export]
 macro_rules! wrap {
     ($x:expr) => {
@@ -53,6 +59,9 @@ macro_rules! wrap_t {
     };
 }
 
+// S-expression data type. 
+// Obj::Primitive and Obj::Closure are never actually constructed directly in the parser. These
+// only appear during evaluation. 
 #[derive(Debug)]
 pub enum Obj {
     Fixnum(i32),
@@ -67,158 +76,6 @@ pub enum Obj {
         rhs: wrap_t!(Ast),
         env: Env,
     },
-}
-
-impl fmt::Display for Obj {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Obj::Fixnum(n) => f.write_str(&format!("{}", n)),
-            Obj::Bool(b) => {
-                if *b {
-                    f.write_str("#t")
-                } else {
-                    f.write_str("#f")
-                }
-            }
-            Obj::Local(l) => f.write_str(l),
-            Obj::Nil => f.write_str("nil"),
-            Obj::Pair(_, _) => {
-                let mut res = String::from("");
-
-                if self.is_list() {
-                    res.push_str(&self.print_list());
-                } else {
-                    res.push_str(&self.print_pair());
-                }
-
-                f.write_str(&format!("({})", res))
-            }
-            Obj::Primitive(name, _) => f.write_str(&format!("#<primitive:{}>", name)),
-            Obj::Quote(inner) => f.write_str(&format!("'{}", inner.borrow())),
-            Obj::Closure { .. } => f.write_str("#<closure>"),
-        }
-    }
-}
-
-impl PartialEq for Obj {
-    fn eq(&self, other: &Self) -> bool {
-        match self {
-            Obj::Fixnum(l) => {
-                if let Obj::Fixnum(r) = other {
-                    l == r
-                } else {
-                    false
-                }
-            }
-            Obj::Bool(l) => {
-                if let Obj::Bool(r) = other {
-                    l == r
-                } else {
-                    false
-                }
-            }
-            Obj::Local(l) => {
-                if let Obj::Local(r) = other {
-                    l == r
-                } else {
-                    false
-                }
-            }
-            Obj::Nil => matches!(other, Obj::Nil),
-            Obj::Pair(lcar, lcdr) => {
-                if let Obj::Pair(rcar, rcdr) = other {
-                    lcar.borrow().eq(&rcar.borrow()) && lcdr.borrow().eq(&rcdr.borrow())
-                } else {
-                    false
-                }
-            }
-            Obj::Primitive(_, _) => false,
-            Obj::Quote(self_inner) => {
-                if let Obj::Quote(other_inner) = other {
-                    self_inner == other_inner
-                } else {
-                    false
-                }
-            }
-            Obj::Closure {
-                formal_args,
-                rhs,
-                env,
-            } => {
-                if let Obj::Closure {
-                    formal_args: formal_args_other,
-                    rhs: rhs_other,
-                    env: env_other,
-                } = other
-                {
-                    formal_args == formal_args_other && rhs == rhs_other && env == env_other
-                } else {
-                    false
-                }
-            }
-        }
-    }
-}
-
-impl Obj {
-    pub fn is_list(&self) -> bool {
-        match self {
-            Obj::Nil => true,
-            Obj::Pair(_, r) => r.borrow().is_list(),
-            _ => false,
-        }
-    }
-
-    fn print_list(&self) -> String {
-        match self {
-            Obj::Pair(l, rp) => {
-                let child_ref = rp.borrow();
-                let l_ref = l.borrow();
-                match &*child_ref {
-                    Obj::Nil => format!("{}", l_ref),
-                    r => format!("{} {}", l_ref, r.print_list()),
-                }
-            }
-            _ => panic!("Inconceivable!"),
-        }
-    }
-
-    fn print_pair(&self) -> String {
-        match self {
-            Obj::Pair(l, r) => format!("{} . {}", l.borrow(), r.borrow()),
-            _ => panic!("Inconceivable!"),
-        }
-    }
-
-    pub fn to_vec(&self) -> Vec<wrap_t!(Obj)> {
-        match self {
-            Obj::Pair(car, cdr) => {
-                let mut res = vec![car.clone()];
-                let mut tail = cdr.borrow().to_vec();
-                res.append(&mut tail);
-                res
-            }
-            Obj::Nil => Vec::new(),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn from_vec(items: &Vec<wrap_t!(Obj)>) -> wrap_t!(Obj) {
-        if items.len() == 0 {
-            wrap!(Obj::Nil)
-        } else {
-            let head = wrap!(Obj::Nil);
-            let mut tail = head.clone();
-            for obj in items {
-                let new_tail = wrap!(Obj::Nil);
-                let new = Obj::Pair(obj.clone(), new_tail.clone());
-                tail.replace(new);
-                tail = new_tail.clone();
-            }
-
-            head
-        }
-    }
 }
 
 impl Stream<'_> {
@@ -360,6 +217,164 @@ impl Stream<'_> {
             self.line_num -= 1;
         }
         self.chars.push_front(c);
+    }
+}
+
+impl fmt::Display for Obj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Obj::Fixnum(n) => f.write_str(&format!("{}", n)),
+            Obj::Bool(b) => {
+                if *b {
+                    f.write_str("#t")
+                } else {
+                    f.write_str("#f")
+                }
+            }
+            Obj::Local(l) => f.write_str(l),
+            Obj::Nil => f.write_str("nil"),
+            Obj::Pair(_, _) => {
+                let mut res = String::from("");
+
+                if self.is_list() {
+                    res.push_str(&self.print_list());
+                } else {
+                    res.push_str(&self.print_pair());
+                }
+
+                f.write_str(&format!("({})", res))
+            }
+            Obj::Primitive(name, _) => f.write_str(&format!("#<primitive:{}>", name)),
+            Obj::Quote(inner) => f.write_str(&format!("'{}", inner.borrow())),
+            Obj::Closure { .. } => f.write_str("#<closure>"),
+        }
+    }
+}
+
+// For testing purposes. This compares the values inside the S-expressions, not their pointers. 
+// Also, this is not at all related to evaluation. For example, if x = 5, then Obj::Local("x") and
+// Obj::Fixnum(5) would NOT be equal. An Obj::Local can't be equal to an Obj::Fixnum.
+impl PartialEq for Obj {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Obj::Fixnum(l) => {
+                if let Obj::Fixnum(r) = other {
+                    l == r
+                } else {
+                    false
+                }
+            }
+            Obj::Bool(l) => {
+                if let Obj::Bool(r) = other {
+                    l == r
+                } else {
+                    false
+                }
+            }
+            Obj::Local(l) => {
+                if let Obj::Local(r) = other {
+                    l == r
+                } else {
+                    false
+                }
+            }
+            Obj::Nil => matches!(other, Obj::Nil),
+            Obj::Pair(lcar, lcdr) => {
+                if let Obj::Pair(rcar, rcdr) = other {
+                    lcar.borrow().eq(&rcar.borrow()) && lcdr.borrow().eq(&rcdr.borrow())
+                } else {
+                    false
+                }
+            }
+            Obj::Primitive(_, _) => false,
+            Obj::Quote(self_inner) => {
+                if let Obj::Quote(other_inner) = other {
+                    self_inner == other_inner
+                } else {
+                    false
+                }
+            }
+            Obj::Closure {
+                formal_args,
+                rhs,
+                env,
+            } => {
+                if let Obj::Closure {
+                    formal_args: formal_args_other,
+                    rhs: rhs_other,
+                    env: env_other,
+                } = other
+                {
+                    formal_args == formal_args_other && rhs == rhs_other && env == env_other
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+impl Obj {
+    // Maybe this could be more ergonomic if there was a `try_list` function, that would return
+    // Option<Vec<wrap_t!(Obj)>> that would return Some if the Sexp was a valid list, None
+    // otherwise.
+    pub fn is_list(&self) -> bool {
+        match self {
+            Obj::Nil => true,
+            Obj::Pair(_, r) => r.borrow().is_list(),
+            _ => false,
+        }
+    }
+
+    fn print_list(&self) -> String {
+        match self {
+            Obj::Pair(l, rp) => {
+                let child_ref = rp.borrow();
+                let l_ref = l.borrow();
+                match &*child_ref {
+                    Obj::Nil => format!("{}", l_ref),
+                    r => format!("{} {}", l_ref, r.print_list()),
+                }
+            }
+            _ => panic!("Inconceivable!"),
+        }
+    }
+
+    fn print_pair(&self) -> String {
+        match self {
+            Obj::Pair(l, r) => format!("{} . {}", l.borrow(), r.borrow()),
+            _ => panic!("Inconceivable!"),
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<wrap_t!(Obj)> {
+        match self {
+            Obj::Pair(car, cdr) => {
+                let mut res = vec![car.clone()];
+                let mut tail = cdr.borrow().to_vec();
+                res.append(&mut tail);
+                res
+            }
+            Obj::Nil => Vec::new(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn from_vec(items: &Vec<wrap_t!(Obj)>) -> wrap_t!(Obj) {
+        if items.len() == 0 {
+            wrap!(Obj::Nil)
+        } else {
+            let head = wrap!(Obj::Nil);
+            let mut tail = head.clone();
+            for obj in items {
+                let new_tail = wrap!(Obj::Nil);
+                let new = Obj::Pair(obj.clone(), new_tail.clone());
+                tail.replace(new);
+                tail = new_tail.clone();
+            }
+
+            head
+        }
     }
 }
 
