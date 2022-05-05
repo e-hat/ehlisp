@@ -191,7 +191,7 @@ impl Context {
                 self.env.insert(name.clone(), Some(res.clone()));
                 Ok(res)
             }
-            Def::Ast(ast) => self.eval(ast.clone()),
+            // Def::Ast(ast) => self.eval(ast.clone()),
         }
     }
 }

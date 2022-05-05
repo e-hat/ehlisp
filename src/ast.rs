@@ -46,7 +46,7 @@ pub enum Ast {
 #[derive(Debug)]
 pub enum Def {
     Val { name: String, rhs: wrap_t!(Ast) },
-    Ast(wrap_t!(Ast)),
+    // Ast(wrap_t!(Ast)),
 }
 
 type Error = String;
@@ -224,7 +224,7 @@ impl fmt::Display for Def {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Def::Val { name, rhs } => f.write_str(&format!("let {} = {}", name, rhs.borrow())),
-            Def::Ast(ast) => f.write_str(&format!("{}", ast.borrow())),
+            // Def::Ast(ast) => f.write_str(&format!("{}", ast.borrow())),
         }
     }
 }
@@ -322,23 +322,18 @@ impl PartialEq for Def {
                 name: lname,
                 rhs: lrhs,
             } => {
-                if let Def::Val {
+                let Def::Val {
                     name: rname,
                     rhs: rrhs,
-                } = other
-                {
-                    lname == rname && lrhs == rrhs
-                } else {
-                    false
-                }
-            }
-            Def::Ast(l) => {
-                if let Def::Ast(r) = other {
-                    l == r
-                } else {
-                    false
-                }
-            }
+                } = other;
+                lname == rname && lrhs == rrhs
+            } /* Def::Ast(l) => {
+                  if let Def::Ast(r) = other {
+                      l == r
+                  } else {
+                      false
+                  }
+              } */
         }
     }
 }
