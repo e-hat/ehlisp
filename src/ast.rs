@@ -133,8 +133,8 @@ impl Ast {
                                     Err("expected form (apply (fnexpr) (args list))".to_string())
                                 } else {
                                     Ok(wrap!(Ast::Apply {
-                                        l: Ast::from_sexp(items[1].clone())?.clone(),
-                                        r: Ast::from_sexp(items[2].clone())?.clone(),
+                                        l: Ast::from_sexp(items[1].clone())?,
+                                        r: Ast::from_sexp(items[2].clone())?,
                                     }))
                                 }
                             }
@@ -145,7 +145,7 @@ impl Ast {
                                     let formal_args = parse_formal_args(&*items[1].borrow())?;
                                     Ok(wrap!(Ast::Lambda {
                                         formal_args,
-                                        rhs: Ast::from_sexp(items[2].clone())?.clone(),
+                                        rhs: Ast::from_sexp(items[2].clone())?,
                                     }))
                                 }
                             }
@@ -405,14 +405,14 @@ mod tests {
                 let parse_res = stream.read_sexp().unwrap();
                 let res = Ast::from_sexp(parse_res);
                 assert!(!res.is_err());
-                assert_eq!(res.unwrap(), $expected);
+                assert_eq!(&*res.unwrap().borrow(), &$expected);
             }
         };
     }
 
     macro_rules! lit_wrap {
         ($x:expr) => {
-            wrap!(Ast::Literal(wrap!($x)))
+            Ast::Literal(wrap!($x))
         };
     }
 
@@ -420,83 +420,83 @@ mod tests {
     test_case!(boolean, "#t", lit_wrap!(Obj::Bool(true)));
     test_case!(nil, "()", lit_wrap!(Obj::Nil));
 
-    test_case!(local, "hello\n", wrap!(Ast::Var("hello".to_string())));
+    test_case!(local, "hello\n", Ast::Var("hello".to_string()));
 
     test_case!(
         val,
         "(val x 5)",
-        wrap!(Ast::DefAst(Def::Val {
+        Ast::DefAst(Def::Val {
             name: "x".to_string(),
-            rhs: lit_wrap!(Obj::Fixnum(5)),
-        }))
+            rhs: wrap!(lit_wrap!(Obj::Fixnum(5))),
+        })
     );
     test_case!(
         conditional,
         "(if #t 5 6)",
-        wrap!(Ast::If {
-            pred: lit_wrap!(Obj::Bool(true)),
-            cons: lit_wrap!(Obj::Fixnum(5)),
-            alt: lit_wrap!(Obj::Fixnum(6)),
-        })
+        Ast::If {
+            pred: wrap!(lit_wrap!(Obj::Bool(true))),
+            cons: wrap!(lit_wrap!(Obj::Fixnum(5))),
+            alt: wrap!(lit_wrap!(Obj::Fixnum(6))),
+        }
     );
     test_case!(
         and,
         "(and #t #f)",
-        wrap!(Ast::And {
-            l: lit_wrap!(Obj::Bool(true)),
-            r: lit_wrap!(Obj::Bool(false)),
-        })
+        Ast::And {
+            l: wrap!(lit_wrap!(Obj::Bool(true))),
+            r: wrap!(lit_wrap!(Obj::Bool(false))),
+        }
     );
     test_case!(
         or,
         "(or #t #f)",
-        wrap!(Ast::Or {
-            l: lit_wrap!(Obj::Bool(true)),
-            r: lit_wrap!(Obj::Bool(false)),
-        })
+        Ast::Or {
+            l: wrap!(lit_wrap!(Obj::Bool(true))),
+            r: wrap!(lit_wrap!(Obj::Bool(false))),
+        }
     );
     test_case!(
         apply,
         "(apply f ())",
-        wrap!(Ast::Apply {
+        Ast::Apply {
             l: wrap!(Ast::Var("f".to_string())),
-            r: lit_wrap!(Obj::Nil),
-        })
+            r: wrap!(lit_wrap!(Obj::Nil)),
+        }
     );
     test_case!(
         call_with_fixnum_first,
         "(1 2 3)",
-        wrap!(Ast::Call {
-            f: lit_wrap!(Obj::Fixnum(1)),
-            args: vec![lit_wrap!(Obj::Fixnum(2)), lit_wrap!(Obj::Fixnum(3))],
-        })
+        Ast::Call {
+            f: wrap!(lit_wrap!(Obj::Fixnum(1))),
+            args: vec![wrap!(lit_wrap!(Obj::Fixnum(2))), wrap!(lit_wrap!(Obj::Fixnum(3)))],
+        }
     );
     test_case!(
         call,
         "(f 1 2)",
-        wrap!(Ast::Call {
+        Ast::Call {
             f: wrap!(Ast::Var("f".to_string())),
-            args: vec![lit_wrap!(Obj::Fixnum(1)), lit_wrap!(Obj::Fixnum(2))],
-        })
+            args: vec![wrap!(lit_wrap!(Obj::Fixnum(1))), wrap!(lit_wrap!(Obj::Fixnum(2)))],
+        }
     );
 
     test_case!(
         lambda,
         "(lambda (x) 5)",
-        wrap!(Ast::Lambda {
+        Ast::Lambda {
             formal_args: vec!["x".to_string()],
-            rhs: lit_wrap!(Obj::Fixnum(5)),
-        })
+            rhs: wrap!(lit_wrap!(Obj::Fixnum(5))),
+        }
     );
     test_case!(lambda_with_fixnum_formal, failure, "(lambda (5) 5)");
 
     test_case!(
         define,
         "(define x () 5)",
-        wrap!(Ast::DefAst(Def::Def{
+        Ast::DefAst(Def::Def{
             name: "x".to_string(),
             formal_args: vec![],
-            rhs: lit_wrap!(Obj::Fixnum(5)),
-        }))
+            rhs: wrap!(lit_wrap!(Obj::Fixnum(5))),
+        })
     );
 }
