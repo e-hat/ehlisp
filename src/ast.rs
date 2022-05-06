@@ -45,7 +45,15 @@ pub enum Ast {
 // alternative.
 #[derive(Debug)]
 pub enum Def {
-    Val { name: String, rhs: wrap_t!(Ast) },
+    Val {
+        name: String,
+        rhs: wrap_t!(Ast),
+    },
+    Def {
+        name: String,
+        formal_args: Vec<String>,
+        rhs: wrap_t!(Ast),
+    },
     // Ast(wrap_t!(Ast)),
 }
 
@@ -134,25 +142,27 @@ impl Ast {
                                 if items.len() != 3 || !items[1].borrow().is_list() {
                                     Err("expected form (lambda (formal args) body)".to_string())
                                 } else {
-                                    let formal_args: Vec<String> = items[1]
-                                        .borrow()
-                                        .to_vec()
-                                        .iter()
-                                        .map(|x| {
-                                            if let Obj::Local(name) = &*x.borrow() {
-                                                Ok(name.clone())
-                                            } else {
-                                                Err(format!(
-                                                    "Got '{}' as formal arg to lambda",
-                                                    x.borrow()
-                                                ))
-                                            }
-                                        })
-                                        .collect::<Result<Vec<_>>>()?;
+                                    let formal_args = parse_formal_args(&*items[1].borrow())?;
                                     Ok(wrap!(Ast::Lambda {
                                         formal_args,
                                         rhs: Ast::from_sexp(items[2].clone())?.clone(),
                                     }))
+                                }
+                            }
+                            "define" => {
+                                if items.len() != 4 || !items[2].borrow().is_list() {
+                                    Err("expected form (define name (formal args) body)".to_string())
+                                } else {
+                                    if let Obj::Local(name) = &*items[1].borrow() {
+                                        let formal_args = parse_formal_args(&*items[2].borrow())?;
+                                        Ok(wrap!(Ast::DefAst(Def::Def{
+                                            name: name.clone(),
+                                            formal_args,
+                                            rhs: Ast::from_sexp(items[3].clone())?,
+                                        })))
+                                    } else {
+                                        Err(format!("expected function name to be Local, got '{}'", items[1].borrow()))
+                                    }
                                 }
                             }
                             _ => {
@@ -191,6 +201,19 @@ impl Ast {
     }
 }
 
+fn parse_formal_args(sexp: &Obj) -> Result<Vec<String>> {
+    sexp.to_vec()
+        .iter()
+        .map(|x| {
+            if let Obj::Local(name) = &*x.borrow() {
+                Ok(name.clone())
+            } else {
+                Err(format!("Got '{}' as formal arg", x.borrow()))
+            }
+        })
+        .collect::<Result<Vec<_>>>()
+}
+
 impl fmt::Display for Ast {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -224,6 +247,7 @@ impl fmt::Display for Def {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Def::Val { name, rhs } => f.write_str(&format!("let {} = {}", name, rhs.borrow())),
+            Def::Def { .. } => f.write_str("#<definition>"),
             // Def::Ast(ast) => f.write_str(&format!("{}", ast.borrow())),
         }
     }
@@ -322,18 +346,30 @@ impl PartialEq for Def {
                 name: lname,
                 rhs: lrhs,
             } => {
-                let Def::Val {
+                if let Def::Val {
                     name: rname,
                     rhs: rrhs,
-                } = other;
+                } = other {
                 lname == rname && lrhs == rrhs
-            } /* Def::Ast(l) => {
-                  if let Def::Ast(r) = other {
-                      l == r
-                  } else {
-                      false
-                  }
-              } */
+                } else {
+                    false
+                } 
+            },
+            Def::Def { 
+                name: lname,
+                formal_args: lformals,
+                rhs: lrhs,
+            } => {
+                if let Def::Def { 
+                    name: rname,
+                    formal_args: rformals,
+                    rhs: rrhs,
+                } = other {
+                    lname == rname && lformals == rformals && lrhs == rrhs
+                } else {
+                    false
+                }
+            }
         }
     }
 }
@@ -453,4 +489,14 @@ mod tests {
         })
     );
     test_case!(lambda_with_fixnum_formal, failure, "(lambda (5) 5)");
+
+    test_case!(
+        define,
+        "(define x () 5)",
+        wrap!(Ast::DefAst(Def::Def{
+            name: "x".to_string(),
+            formal_args: vec![],
+            rhs: lit_wrap!(Obj::Fixnum(5)),
+        }))
+    );
 }

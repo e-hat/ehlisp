@@ -136,8 +136,12 @@ impl Context {
                     } else {
                         Err("Type Error: expected list as argument to function call".to_string())
                     }
-                },
-                Obj::Closure{ formal_args, rhs, env } => {
+                }
+                Obj::Closure {
+                    formal_args,
+                    rhs,
+                    env,
+                } => {
                     let actuals_obj = self.eval(r.clone())?;
                     if actuals_obj.borrow().is_list() {
                         // TODO: Investigate making a temp of the environment, altering the
@@ -154,7 +158,7 @@ impl Context {
                     } else {
                         Err("Type Error: expected list as argument to function call".to_string())
                     }
-                },
+                }
                 _ => Err("Type Error: (apply prim '(args))".to_string()),
             },
             Ast::Call { f, args } => match &*self.eval(f.clone())?.borrow() {
@@ -164,15 +168,19 @@ impl Context {
                         .map(|x| self.eval(x.clone()))
                         .collect::<Result<Vec<_>>>()?;
                     func(obj_args)
-                },
-                Obj::Closure{ formal_args, rhs, env } => {
+                }
+                Obj::Closure {
+                    formal_args,
+                    rhs,
+                    env,
+                } => {
                     let mut env_copy = env.clone();
                     for (formal, actual) in formal_args.iter().zip(args.iter()) {
                         env_copy.insert(formal.clone(), Some(self.eval(actual.clone())?));
                     }
 
                     Context::from(env_copy).eval(rhs.clone())
-                },
+                }
                 _ => Err("Type Error: (f args)".to_string()),
             },
             Ast::Lambda { formal_args, rhs } => Ok(wrap!(Obj::Closure {
@@ -191,7 +199,9 @@ impl Context {
                 self.env.insert(name.clone(), Some(res.clone()));
                 Ok(res)
             }
-            // Def::Ast(ast) => self.eval(ast.clone()),
+            Def::Def { .. } => {
+                unimplemented!()
+            }
         }
     }
 }
@@ -303,6 +313,16 @@ mod tests {
     test_case!(apply_with_quote, "(apply + '(1 2))", wrap!(Obj::Fixnum(3)));
     test_case!(apply_plus_with_empty_args, failure, "(apply + '())");
 
-    test_case!(closure_assign_to_var, ["(val add-one (lambda (x) (+ x 1)))"], "(add-one 0)", wrap!(Obj::Fixnum(1)));
-    test_case!(closure_called_in_closure, ["(val add-one (lambda (x) (+ x 1)))"], "(add-one (add-one 0))", wrap!(Obj::Fixnum(2)));
+    test_case!(
+        closure_assign_to_var,
+        ["(val add-one (lambda (x) (+ x 1)))"],
+        "(add-one 0)",
+        wrap!(Obj::Fixnum(1))
+    );
+    test_case!(
+        closure_called_in_closure,
+        ["(val add-one (lambda (x) (+ x 1)))"],
+        "(add-one (add-one 0))",
+        wrap!(Obj::Fixnum(2))
+    );
 }
