@@ -20,7 +20,6 @@ pub struct Stream<'a> {
 }
 
 // Random parsing helpers
-
 fn is_whitespace(c: u8) -> bool {
     c == b' ' || c == b'\n' || c == b'\t'
 }
@@ -393,37 +392,37 @@ mod tests {
 
                 let res = stream.read_sexp();
                 assert!(!res.is_err());
-                assert_eq!(res.unwrap(), $expected);
+                assert_eq!(&*res.unwrap().borrow(), &$expected);
             }
         };
     }
 
-    test_case!(fixnum_positive, "1", wrap!(Obj::Fixnum(1)));
-    test_case!(fixnum_negative, "-1", wrap!(Obj::Fixnum(-1)));
+    test_case!(fixnum_positive, "1", Obj::Fixnum(1));
+    test_case!(fixnum_negative, "-1", Obj::Fixnum(-1));
 
-    test_case!(bool_true, "#t", wrap!(Obj::Bool(true)));
-    test_case!(bool_false, "#f", wrap!(Obj::Bool(false)));
+    test_case!(bool_true, "#t", Obj::Bool(true));
+    test_case!(bool_false, "#f", Obj::Bool(false));
 
     test_case!(
         local,
         "+-/\\whatever_^%$#@!&*[]{}:;'\"\n",
-        wrap!(Obj::Local(String::from("+-/\\whatever_^%$#@!&*[]{}:;'\"")))
+        Obj::Local(String::from("+-/\\whatever_^%$#@!&*[]{}:;'\""))
     );
 
-    test_case!(nil, "()", wrap!(Obj::Nil));
+    test_case!(nil, "()", Obj::Nil);
     test_case!(
         pair,
         "(42 69 420)",
-        Obj::from_vec(&vec![
+        *Obj::from_vec(&vec![
             wrap!(Obj::Fixnum(42)),
             wrap!(Obj::Fixnum(69)),
             wrap!(Obj::Fixnum(420))
-        ])
+        ]).borrow()
     );
 
     test_case!(
         quote,
         "'a'\n",
-        wrap!(Obj::Quote(wrap!(Obj::Local("a'".to_string()))))
+        Obj::Quote(wrap!(Obj::Local("a'".to_string())))
     );
 }
