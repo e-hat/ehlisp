@@ -12,8 +12,8 @@ fn repl(stream: &mut parse::Stream) -> io::Result<()> {
         print!("> ");
         io::stdout().flush()?;
         let input = stream.read_sexp()?;
-        match ast::Ast::from_sexp(input.clone()) {
-            Ok(sexp) => match ctx.eval(sexp) {
+        match ast::Ast::from_sexp(&input) {
+            Ok(ref sexp) => match ctx.eval(sexp) {
                 Ok(res) => println!("{}", res.borrow()),
                 Err(msg) => return Err(Error::new(ErrorKind::Other, msg)),
             },

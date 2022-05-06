@@ -81,15 +81,15 @@ impl Context {
         Context { env }
     }
 
-    pub fn eval(&mut self, ast: Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
+    pub fn eval(&mut self, ast: &Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
         if let Ast::DefAst(ref d) = *ast.borrow() {
             self.eval_def(d)
         } else {
-            self.eval_ast(ast.clone())
+            self.eval_ast(ast)
         }
     }
 
-    fn eval_ast(&mut self, ast: Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
+    fn eval_ast(&mut self, ast: &Rc<RefCell<Ast>>) -> Result<Rc<RefCell<Obj>>> {
         match &*ast.borrow() {
             Ast::Literal(l) => {
                 if let Obj::Quote(inner) = &*l.borrow() {
@@ -105,9 +105,9 @@ impl Context {
                     name
                 )),
             },
-            Ast::If { pred, cons, alt } => match &*self.eval(pred.clone())?.borrow() {
-                Obj::Bool(true) => self.eval(cons.clone()),
-                Obj::Bool(false) => self.eval(alt.clone()),
+            Ast::If { pred, cons, alt } => match &*self.eval(pred)?.borrow() {
+                Obj::Bool(true) => self.eval(cons),
+                Obj::Bool(false) => self.eval(alt),
                 res => Err(format!(
                     "Invalid predicate result for if statement: '{}', evaluated from '{}'",
                     res,
@@ -115,22 +115,22 @@ impl Context {
                 )),
             },
             Ast::And { l, r } => match (
-                &*self.eval(l.clone())?.borrow(),
-                &*self.eval(r.clone())?.borrow(),
+                &*self.eval(l)?.borrow(),
+                &*self.eval(r)?.borrow(),
             ) {
                 (Obj::Bool(l_res), Obj::Bool(r_res)) => Ok(wrap!(Obj::Bool(*l_res && *r_res))),
                 _ => Err("Type error: (and bool bool)".to_string()),
             },
             Ast::Or { l, r } => match (
-                &*self.eval(l.clone())?.borrow(),
-                &*self.eval(r.clone())?.borrow(),
+                &*self.eval(l)?.borrow(),
+                &*self.eval(r)?.borrow(),
             ) {
                 (Obj::Bool(l_res), Obj::Bool(r_res)) => Ok(wrap!(Obj::Bool(*l_res && *r_res))),
                 _ => Err("Type error: (or bool bool)".to_string()),
             },
-            Ast::Apply { l, r } => match &mut *self.eval(l.clone())?.borrow_mut() {
+            Ast::Apply { l, r } => match &mut *self.eval(l)?.borrow_mut() {
                 Obj::Primitive(_, func) => {
-                    let args = self.eval(r.clone())?;
+                    let args = self.eval(r)?;
                     if args.borrow().is_list() {
                         func(args.borrow().to_vec())
                     } else {
@@ -142,7 +142,7 @@ impl Context {
                     rhs,
                     env,
                 } => {
-                    let actuals_obj = self.eval(r.clone())?;
+                    let actuals_obj = self.eval(r)?;
                     if actuals_obj.borrow().is_list() {
                         // TODO: Investigate making a temp of the environment, altering the
                         // existing environment, evaluating and saving the result, setting the
@@ -154,18 +154,18 @@ impl Context {
                             env_copy.insert(formal.clone(), Some(actual.clone()));
                         }
 
-                        Context::from(env_copy).eval(rhs.clone())
+                        Context::from(env_copy).eval(rhs)
                     } else {
                         Err("Type Error: expected list as argument to function call".to_string())
                     }
                 }
                 _ => Err("Type Error: (apply prim '(args))".to_string()),
             },
-            Ast::Call { f, args } => match &*self.eval(f.clone())?.borrow() {
+            Ast::Call { f, args } => match &*self.eval(f)?.borrow() {
                 Obj::Primitive(_, func) => {
                     let obj_args = args
                         .iter()
-                        .map(|x| self.eval(x.clone()))
+                        .map(|x| self.eval(x))
                         .collect::<Result<Vec<_>>>()?;
                     func(obj_args)
                 }
@@ -176,10 +176,10 @@ impl Context {
                 } => {
                     let mut env_copy = env.clone();
                     for (formal, actual) in formal_args.iter().zip(args.iter()) {
-                        env_copy.insert(formal.clone(), Some(self.eval(actual.clone())?));
+                        env_copy.insert(formal.clone(), Some(self.eval(actual)?));
                     }
 
-                    Context::from(env_copy).eval(rhs.clone())
+                    Context::from(env_copy).eval(rhs)
                 }
                 _ => Err("Type Error: (f args)".to_string()),
             },
@@ -195,7 +195,7 @@ impl Context {
     fn eval_def(&mut self, def: &Def) -> Result<Rc<RefCell<Obj>>> {
         match def {
             Def::Val { name, rhs } => {
-                let res = self.eval(rhs.clone())?;
+                let res = self.eval(rhs)?;
                 self.env.insert(name.clone(), Some(res.clone()));
                 Ok(res)
             }
@@ -223,10 +223,10 @@ mod tests {
                 let mut stream = Stream::new(&mut input);
                 let parse_res = stream.read_sexp().unwrap();
 
-                let ast_res = Ast::from_sexp(parse_res).unwrap();
+                let ast_res = Ast::from_sexp(&parse_res).unwrap();
 
                 let mut ctx = Context::new();
-                let res = ctx.eval(ast_res.clone());
+                let res = ctx.eval(&ast_res);
                 assert!(res.is_err());
             }
         };
@@ -238,10 +238,10 @@ mod tests {
                 let mut stream = Stream::new(&mut input);
                 let parse_res = stream.read_sexp().unwrap();
 
-                let ast_res = Ast::from_sexp(parse_res).unwrap();
+                let ast_res = Ast::from_sexp(&parse_res).unwrap();
 
                 let mut ctx = Context::new();
-                let res = ctx.eval(ast_res.clone());
+                let res = ctx.eval(&ast_res);
                 assert!(!res.is_err());
                 assert_eq!(res.unwrap(), $expected);
             }
@@ -256,8 +256,8 @@ mod tests {
                     let mut stream = Stream::new(&mut input);
                     let parse_res = stream.read_sexp().unwrap();
 
-                    let ast_res = Ast::from_sexp(parse_res).unwrap();
-                    assert!(!ctx.eval(ast_res.clone()).is_err());
+                    let ast_res = Ast::from_sexp(&parse_res).unwrap();
+                    assert!(!ctx.eval(&ast_res).is_err());
                 }
 
                 let input_str = String::from($input);
@@ -265,8 +265,8 @@ mod tests {
                 let mut stream = Stream::new(&mut input);
                 let parse_res = stream.read_sexp().unwrap();
 
-                let ast_res = Ast::from_sexp(parse_res).unwrap();
-                let res = ctx.eval(ast_res.clone());
+                let ast_res = Ast::from_sexp(&parse_res).unwrap();
+                let res = ctx.eval(&ast_res);
                 assert!(!res.is_err());
                 assert_eq!(res.unwrap(), $expected);
             }

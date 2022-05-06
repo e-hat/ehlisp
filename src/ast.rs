@@ -66,7 +66,7 @@ impl Ast {
     // during evaluation. This is also where special forms are built. I don't think `and` or `or`
     // should be handled here, as they are not special forms and make more sense as primitives. I'm
     // on the fence about `lambda` and `apply`, but they seem kinda special.
-    pub fn from_sexp(sexp: wrap_t!(Obj)) -> Result<wrap_t!(Ast)> {
+    pub fn from_sexp(sexp: &wrap_t!(Obj)) -> Result<wrap_t!(Ast)> {
         match &*sexp.borrow() {
             Obj::Fixnum(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
             Obj::Bool(_) => Ok(wrap!(Ast::Literal(sexp.clone()))),
@@ -88,9 +88,9 @@ impl Ast {
                                     Err("expected form (if (pred) (cons) (alt))".to_string())
                                 } else {
                                     Ok(wrap!(Ast::If {
-                                        pred: Ast::from_sexp(items[1].clone())?,
-                                        cons: Ast::from_sexp(items[2].clone())?,
-                                        alt: Ast::from_sexp(items[3].clone())?,
+                                        pred: Ast::from_sexp(&items[1])?,
+                                        cons: Ast::from_sexp(&items[2])?,
+                                        alt: Ast::from_sexp(&items[3])?,
                                     }))
                                 }
                             }
@@ -99,8 +99,8 @@ impl Ast {
                                     Err("expected form (and (l) (r))".to_string())
                                 } else {
                                     Ok(wrap!(Ast::And {
-                                        l: Ast::from_sexp(items[1].clone())?,
-                                        r: Ast::from_sexp(items[2].clone())?,
+                                        l: Ast::from_sexp(&items[1])?,
+                                        r: Ast::from_sexp(&items[2])?,
                                     }))
                                 }
                             }
@@ -109,8 +109,8 @@ impl Ast {
                                     Err("expected form (or (l) (r))".to_string())
                                 } else {
                                     Ok(wrap!(Ast::Or {
-                                        l: Ast::from_sexp(items[1].clone())?,
-                                        r: Ast::from_sexp(items[2].clone())?,
+                                        l: Ast::from_sexp(&items[1])?,
+                                        r: Ast::from_sexp(&items[2])?,
                                     }))
                                 }
                             }
@@ -121,7 +121,7 @@ impl Ast {
                                     if let Obj::Local(name) = &*items[1].borrow() {
                                         Ok(wrap!(Ast::DefAst(Def::Val {
                                             name: name.to_string(),
-                                            rhs: Ast::from_sexp(items[2].clone())?,
+                                            rhs: Ast::from_sexp(&items[2])?,
                                         })))
                                     } else {
                                         Err("expected `name` to be a string in form (val (name) (expr))".to_string())
@@ -133,8 +133,8 @@ impl Ast {
                                     Err("expected form (apply (fnexpr) (args list))".to_string())
                                 } else {
                                     Ok(wrap!(Ast::Apply {
-                                        l: Ast::from_sexp(items[1].clone())?,
-                                        r: Ast::from_sexp(items[2].clone())?,
+                                        l: Ast::from_sexp(&items[1])?,
+                                        r: Ast::from_sexp(&items[2])?,
                                     }))
                                 }
                             }
@@ -145,7 +145,7 @@ impl Ast {
                                     let formal_args = parse_formal_args(&*items[1].borrow())?;
                                     Ok(wrap!(Ast::Lambda {
                                         formal_args,
-                                        rhs: Ast::from_sexp(items[2].clone())?,
+                                        rhs: Ast::from_sexp(&items[2])?,
                                     }))
                                 }
                             }
@@ -158,7 +158,7 @@ impl Ast {
                                         Ok(wrap!(Ast::DefAst(Def::Def{
                                             name: name.clone(),
                                             formal_args,
-                                            rhs: Ast::from_sexp(items[3].clone())?,
+                                            rhs: Ast::from_sexp(&items[3])?,
                                         })))
                                     } else {
                                         Err(format!("expected function name to be Local, got '{}'", items[1].borrow()))
@@ -169,10 +169,10 @@ impl Ast {
                                 let mut args = Vec::new();
                                 args.reserve(items.len());
                                 for arg in items[1..].into_iter() {
-                                    args.push(Ast::from_sexp(arg.clone())?);
+                                    args.push(Ast::from_sexp(arg)?);
                                 }
                                 Ok(wrap!(Ast::Call {
-                                    f: Ast::from_sexp(items[0].clone())?,
+                                    f: Ast::from_sexp(&items[0])?,
                                     args,
                                 }))
                             }
@@ -183,10 +183,10 @@ impl Ast {
                         let mut args = Vec::new();
                         args.reserve(items.len() - 1);
                         for arg in items[1..].into_iter() {
-                            args.push(Ast::from_sexp(arg.clone())?);
+                            args.push(Ast::from_sexp(arg)?);
                         }
                         Ok(wrap!(Ast::Call {
-                            f: Ast::from_sexp(items[0].clone())?,
+                            f: Ast::from_sexp(&items[0])?,
                             args,
                         }))
                     };
@@ -391,7 +391,7 @@ mod tests {
                 let mut stream = Stream::new(&mut input);
 
                 let parse_res = stream.read_sexp().unwrap();
-                let res = Ast::from_sexp(parse_res);
+                let res = Ast::from_sexp(&parse_res);
                 assert!(res.is_err());
             }
         };
@@ -403,7 +403,7 @@ mod tests {
                 let mut stream = Stream::new(&mut input);
 
                 let parse_res = stream.read_sexp().unwrap();
-                let res = Ast::from_sexp(parse_res);
+                let res = Ast::from_sexp(&parse_res);
                 assert!(!res.is_err());
                 assert_eq!(&*res.unwrap().borrow(), &$expected);
             }
