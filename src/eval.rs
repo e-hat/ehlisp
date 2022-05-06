@@ -19,6 +19,45 @@ pub type Result<T> = std::result::Result<T, Error>;
 // environment objects.
 
 // Expects args to be completely evaluated -- aka it will fail if not passed only Fixnum's
+fn prim_mul(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    if args.len() <= 1 {
+        Err(String::from("Expected at least two arguments for '*'"))
+    } else {
+        let mut prod: i32 = 1;
+        for arg in args.iter() {
+            if let Obj::Fixnum(n) = *arg.borrow() {
+                prod *= n;
+            } else {
+                return Err(format!(
+                    "Expected fixnum as parameter to '*', got: {}",
+                    arg.borrow()
+                ));
+            }
+        }
+
+        Ok(wrap!(Obj::Fixnum(prod)))
+    }
+}
+
+fn prim_sub(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
+    if args.len() != 2 {
+        Err(String::from("Expected two arguments for '-'"))
+    } else {
+        match (&*args[0].borrow(), &*args[1].borrow()) {
+            (Obj::Fixnum(l), Obj::Fixnum(r)) => Ok(wrap!(Obj::Fixnum(l - r))),
+            _ => Err(String::from("Type Error: expected two ints as args for '-'"))
+        }
+    }
+}
+
+fn prim_eq(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
+    if args.len() != 2 {
+        Err(String::from("Expected two arguments for '='"))
+    } else {
+        Ok(wrap!(Obj::Bool(args[0] == args[1])))
+    }
+}
+
 fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     if args.len() <= 1 {
         Err(String::from("Expected at least two arguments for '+'"))
@@ -67,6 +106,21 @@ fn basis_env() -> Env {
     res.insert(
         String::from("list"),
         Some(wrap!(Obj::Primitive(String::from("list"), prim_list))),
+    );
+
+    res.insert(
+        String::from("="),
+        Some(wrap!(Obj::Primitive(String::from("="), prim_eq))),
+    );
+
+    res.insert(
+        String::from("sub"),
+        Some(wrap!(Obj::Primitive(String::from("sub"), prim_sub))),
+    );
+
+    res.insert(
+        String::from("*"),
+        Some(wrap!(Obj::Primitive(String::from("*"), prim_mul))),
     );
 
     res
@@ -199,8 +253,19 @@ impl Context {
                 self.env.insert(name.clone(), Some(res.clone()));
                 Ok(res)
             }
-            Def::Def { .. } => {
-                unimplemented!()
+            Def::Def { name, formal_args, rhs } => {
+                let res = self.eval(&wrap!(Ast::Lambda{ formal_args: formal_args.clone(), rhs: rhs.clone() }))?;
+                if let Obj::Closure {
+                    formal_args: _,
+                    rhs: _,
+                    env: cl_env,
+                } = &mut *res.borrow_mut() {
+                    cl_env.insert(name.clone(), Some(res.clone()));
+                    self.env.insert(name.clone(), Some(res.clone()));
+                } else {
+                    unreachable!()
+                }
+                Ok(res)
             }
         }
     }
@@ -324,5 +389,12 @@ mod tests {
         ["(val add-one (lambda (x) (+ x 1)))"],
         "(add-one (add-one 0))",
         wrap!(Obj::Fixnum(2))
+    );
+
+    test_case!(
+        factorial,
+        ["(define factorial (n) (if (= n 1) 1 (* n (factorial (sub n 1)))))"],
+        "(factorial 5)",
+        wrap!(Obj::Fixnum(120))
     );
 }
