@@ -19,6 +19,38 @@ pub type Result<T> = std::result::Result<T, Error>;
 // environment objects.
 
 // Expects args to be completely evaluated -- aka it will fail if not passed only Fixnum's
+fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    if args.len() <= 1 {
+        Err(String::from("Expected at least two arguments for '+'"))
+    } else {
+        let mut sum: i32 = 0;
+        for arg in args.iter() {
+            if let Obj::Fixnum(n) = *arg.borrow() {
+                sum += n;
+            } else {
+                return Err(format!(
+                    "Expected fixnum as parameter to '+', got: {}",
+                    arg.borrow()
+                ));
+            }
+        }
+
+        Ok(wrap!(Obj::Fixnum(sum)))
+    }
+}
+
+fn prim_pair(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    if args.len() != 2 {
+        Err(String::from("Expected two arguments for 'pair'"))
+    } else {
+        Ok(wrap!(Obj::Pair(args[0].clone(), args[1].clone(),)))
+    }
+}
+
+fn prim_list(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
+    Ok(Obj::from_vec(&args))
+}
+
 fn prim_mul(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
     if args.len() <= 1 {
         Err(String::from("Expected at least two arguments for '*'"))
@@ -60,36 +92,16 @@ fn prim_eq(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
     }
 }
 
-fn prim_plus(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
-    if args.len() <= 1 {
-        Err(String::from("Expected at least two arguments for '+'"))
+fn prim_isatom(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
+    if args.len() != 1 {
+        Err(String::from("Expected a single argument to 'atom?'"))
     } else {
-        let mut sum: i32 = 0;
-        for arg in args.iter() {
-            if let Obj::Fixnum(n) = *arg.borrow() {
-                sum += n;
-            } else {
-                return Err(format!(
-                    "Expected fixnum as parameter to '+', got: {}",
-                    arg.borrow()
-                ));
-            }
+        if let Obj::Pair(..) = &*args[0].borrow() {
+            Ok(wrap!(Obj::Bool(false)))
+        } else {
+            Ok(wrap!(Obj::Bool(true)))
         }
-
-        Ok(wrap!(Obj::Fixnum(sum)))
     }
-}
-
-fn prim_pair(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
-    if args.len() != 2 {
-        Err(String::from("Expected two arguments for 'pair'"))
-    } else {
-        Ok(wrap!(Obj::Pair(args[0].clone(), args[1].clone(),)))
-    }
-}
-
-fn prim_list(args: Vec<Rc<RefCell<Obj>>>) -> Result<Rc<RefCell<Obj>>> {
-    Ok(Obj::from_vec(&args))
 }
 
 // Defines the environment that evaluation begins with.
@@ -123,6 +135,11 @@ fn basis_env() -> Env {
     res.insert(
         String::from("*"),
         Some(wrap!(Obj::Primitive(String::from("*"), prim_mul))),
+    );
+
+    res.insert(
+        String::from("atom?"),
+        Some(wrap!(Obj::Primitive(String::from("atom?"), prim_isatom))),
     );
 
     res
@@ -409,5 +426,16 @@ mod tests {
         ["(define factorial (n) (if (= n 1) 1 (* n (factorial (- n 1)))))"],
         "(factorial 5)",
         wrap!(Obj::Fixnum(120))
+    );
+
+    test_case!(
+        is_atom_true,
+        "(atom? 1)",
+        wrap!(Obj::Bool(true))
+    );
+    test_case!(
+        is_atom_false,
+        "(atom? (pair 0 1))",
+        wrap!(Obj::Bool(false))
     );
 }
