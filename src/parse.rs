@@ -24,6 +24,18 @@ fn is_whitespace(c: u8) -> bool {
     c == b' ' || c == b'\n' || c == b'\t'
 }
 
+fn try_digit_start(c: u8, stream: &mut Stream) -> io::Result<bool> {
+    if is_digit(c) {
+        Ok(true)
+    } else if c == b'-' {
+        let next = stream.read_char()?;
+        stream.unread_char(next);
+        Ok(is_digit(next))
+    } else {
+        Ok(false)
+    }
+}
+
 fn is_digit(c: u8) -> bool {
     c >= b'0' && c <= b'9'
 }
@@ -90,7 +102,7 @@ impl Stream<'_> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
-        if is_digit(c) || c == b'-' {
+        if try_digit_start(c, self)? {
             self.unread_char(c);
             self.read_num().map(|n| wrap!(Obj::Fixnum(n)))
         } else if c == b'#' {

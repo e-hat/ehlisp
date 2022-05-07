@@ -114,8 +114,8 @@ fn basis_env() -> Env {
     );
 
     res.insert(
-        String::from("sub"),
-        Some(wrap!(Obj::Primitive(String::from("sub"), prim_sub))),
+        String::from("-"),
+        Some(wrap!(Obj::Primitive(String::from("-"), prim_sub))),
     );
 
     res.insert(
@@ -393,7 +393,7 @@ mod tests {
 
     test_case!(
         factorial,
-        ["(define factorial (n) (if (= n 1) 1 (* n (factorial (sub n 1)))))"],
+        ["(define factorial (n) (if (= n 1) 1 (* n (factorial (- n 1)))))"],
         "(factorial 5)",
         wrap!(Obj::Fixnum(120))
     );
