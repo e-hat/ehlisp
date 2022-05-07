@@ -1,6 +1,6 @@
 # ehlisp
 ## About/Roadmap
-- [ ] ~~I am currently translating [this tutorial](https://bernsteinbear.com/blog/lisp/00_fundamentals/) 
+- [x] ~~I am currently translating [this tutorial](https://bernsteinbear.com/blog/lisp/00_fundamentals/) 
 into rust.~~ I'm all done! I've got a working lisp interpreter! 
 - [ ] I guess I want to make the interpreter faster somehow. I don't currently know what's very slow. Time to take some measurements!
 - [ ] I'm scared to say it but, JIT compilation would be super cool? It sounds quite difficult. Maybe I'll be able to 
