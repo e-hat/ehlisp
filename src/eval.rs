@@ -199,12 +199,16 @@ impl Context {
                         // environment equal to the original saved in temp, then returning the
                         // result -- is this better/faster than what is happening here?
                         let actuals = actuals_obj.borrow().to_vec();
-                        let mut env_copy = env.clone();
-                        for (formal, actual) in formal_args.iter().zip(actuals.iter()) {
-                            env_copy.insert(formal.clone(), Some(actual.clone()));
-                        }
+                        if actuals.len() != formal_args.len() {
+                            Err("Incorrect number of args passed to closure".to_string())
+                        } else {
+                            let mut env_copy = env.clone();
+                            for (formal, actual) in formal_args.iter().zip(actuals.iter()) {
+                                env_copy.insert(formal.clone(), Some(actual.clone()));
+                            }
 
-                        Context::from(env_copy).eval(rhs)
+                            Context::from(env_copy).eval(rhs)
+                        }
                     } else {
                         Err("Type Error: expected list as argument to function call".to_string())
                     }
@@ -224,12 +228,16 @@ impl Context {
                     rhs,
                     env,
                 } => {
-                    let mut env_copy = env.clone();
-                    for (formal, actual) in formal_args.iter().zip(args.iter()) {
-                        env_copy.insert(formal.clone(), Some(self.eval(actual)?));
-                    }
+                    if formal_args.len() != args.len() {
+                        Err("Incorrect number of args passed to closure".to_string())
+                    } else {
+                        let mut env_copy = env.clone();
+                        for (formal, actual) in formal_args.iter().zip(args.iter()) {
+                            env_copy.insert(formal.clone(), Some(self.eval(actual)?));
+                        }
 
-                    Context::from(env_copy).eval(rhs)
+                        Context::from(env_copy).eval(rhs)
+                    }
                 }
                 _ => Err("Type Error: (f args)".to_string()),
             },
@@ -395,6 +403,7 @@ mod tests {
         wrap!(Obj::Fixnum(2))
     );
 
+    test_case!(define, ["(define f () 5)"], "(f)", wrap!(Obj::Fixnum(5)));
     test_case!(
         factorial,
         ["(define factorial (n) (if (= n 1) 1 (* n (factorial (- n 1)))))"],
