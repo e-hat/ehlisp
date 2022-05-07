@@ -2,7 +2,7 @@
 ## About/Roadmap
 - [x] ~~I am currently translating [this tutorial](https://bernsteinbear.com/blog/lisp/00_fundamentals/) 
 into rust.~~ I'm all done! I've got a working lisp interpreter! 
-- [ ] I guess I want to make the interpreter faster somehow. I don't currently know what's very slow. Time to take some measurements!
+- [ ] I guess I want to make the interpreter faster somehow. I don't currently know what's very slow. Time to take some write some benchmarks!
 - [ ] I'm scared to say it but, JIT compilation would be super cool? It sounds quite difficult. Maybe I'll be able to 
 look at some existing LISP compilers and try to do similar stuff. I just gotta start simple and build from there. I'll definitely 
 be using LLVM/cranelift/however that works in rust for this.
