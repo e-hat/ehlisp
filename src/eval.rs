@@ -104,6 +104,30 @@ fn prim_isatom(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
     }
 }
 
+fn prim_car(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
+    if args.len() != 1 {
+        Err(String::from("Expected a single argument to 'car'"))
+    } else {
+        if let Obj::Pair(car, _) = &*args[0].borrow() {
+            Ok(car.clone())
+        } else {
+            Err(format!("Type Error: expected argument to 'car' to be a pair, got '{}'", args[0].borrow()))
+        }
+    }
+}
+
+fn prim_cdr(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
+    if args.len() != 1 {
+        Err(String::from("Expected a single argument to 'cdr'"))
+    } else {
+        if let Obj::Pair(_, cdr) = &*args[0].borrow() {
+            Ok(cdr.clone())
+        } else {
+            Err(format!("Type Error: expected argument to 'cdr' to be a pair, got '{}'", args[0].borrow()))
+        }
+    }
+}
+
 // Defines the environment that evaluation begins with.
 fn basis_env() -> Env {
     let mut res: Env = HashMap::new();
@@ -140,6 +164,16 @@ fn basis_env() -> Env {
     res.insert(
         String::from("atom?"),
         Some(wrap!(Obj::Primitive(String::from("atom?"), prim_isatom))),
+    );
+
+    res.insert(
+        String::from("car"),
+        Some(wrap!(Obj::Primitive(String::from("car"), prim_car))),
+        );
+
+    res.insert(
+        String::from("cdr"),
+        Some(wrap!(Obj::Primitive(String::from("cdr"), prim_cdr))),
     );
 
     res
@@ -437,5 +471,16 @@ mod tests {
         is_atom_false,
         "(atom? (pair 0 1))",
         wrap!(Obj::Bool(false))
+    );
+
+    test_case!(
+        car,
+        "(car (pair 1 2))",
+        wrap!(Obj::Fixnum(1))
+    );
+    test_case!(
+        cdr,
+        "(cdr (pair 1 2))",
+        wrap!(Obj::Fixnum(2))
     );
 }

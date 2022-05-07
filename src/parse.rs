@@ -70,9 +70,9 @@ macro_rules! wrap_t {
     };
 }
 
-// S-expression data type.
+// S-expression data type. 
 // Obj::Primitive and Obj::Closure are never actually constructed directly in the parser. These
-// only appear during evaluation.
+// only appear during evaluation. 
 #[derive(Debug)]
 pub enum Obj {
     Fixnum(i32),
@@ -262,7 +262,7 @@ impl fmt::Display for Obj {
     }
 }
 
-// For testing purposes. This compares the values inside the S-expressions, not their pointers.
+// For testing purposes. This compares the values inside the S-expressions, not their pointers. 
 // Also, this is not at all related to evaluation. For example, if x = 5, then Obj::Local("x") and
 // Obj::Fixnum(5) would NOT be equal. An Obj::Local can't be equal to an Obj::Fixnum.
 impl PartialEq for Obj {
@@ -429,8 +429,7 @@ mod tests {
             wrap!(Obj::Fixnum(42)),
             wrap!(Obj::Fixnum(69)),
             wrap!(Obj::Fixnum(420))
-        ])
-        .borrow()
+        ]).borrow()
     );
 
     test_case!(
