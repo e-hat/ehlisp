@@ -151,17 +151,21 @@ impl Ast {
                             }
                             "define" => {
                                 if items.len() != 4 || !items[2].borrow().is_list() {
-                                    Err("expected form (define name (formal args) body)".to_string())
+                                    Err("expected form (define name (formal args) body)"
+                                        .to_string())
                                 } else {
                                     if let Obj::Local(name) = &*items[1].borrow() {
                                         let formal_args = parse_formal_args(&*items[2].borrow())?;
-                                        Ok(wrap!(Ast::DefAst(Def::Def{
+                                        Ok(wrap!(Ast::DefAst(Def::Def {
                                             name: name.clone(),
                                             formal_args,
                                             rhs: Ast::from_sexp(&items[3])?,
                                         })))
                                     } else {
-                                        Err(format!("expected function name to be Local, got '{}'", items[1].borrow()))
+                                        Err(format!(
+                                            "expected function name to be Local, got '{}'",
+                                            items[1].borrow()
+                                        ))
                                     }
                                 }
                             }
@@ -349,22 +353,24 @@ impl PartialEq for Def {
                 if let Def::Val {
                     name: rname,
                     rhs: rrhs,
-                } = other {
-                lname == rname && lrhs == rrhs
+                } = other
+                {
+                    lname == rname && lrhs == rrhs
                 } else {
                     false
-                } 
-            },
-            Def::Def { 
+                }
+            }
+            Def::Def {
                 name: lname,
                 formal_args: lformals,
                 rhs: lrhs,
             } => {
-                if let Def::Def { 
+                if let Def::Def {
                     name: rname,
                     formal_args: rformals,
                     rhs: rrhs,
-                } = other {
+                } = other
+                {
                     lname == rname && lformals == rformals && lrhs == rrhs
                 } else {
                     false
@@ -468,7 +474,10 @@ mod tests {
         "(1 2 3)",
         Ast::Call {
             f: wrap!(lit_wrap!(Obj::Fixnum(1))),
-            args: vec![wrap!(lit_wrap!(Obj::Fixnum(2))), wrap!(lit_wrap!(Obj::Fixnum(3)))],
+            args: vec![
+                wrap!(lit_wrap!(Obj::Fixnum(2))),
+                wrap!(lit_wrap!(Obj::Fixnum(3)))
+            ],
         }
     );
     test_case!(
@@ -476,7 +485,10 @@ mod tests {
         "(f 1 2)",
         Ast::Call {
             f: wrap!(Ast::Var("f".to_string())),
-            args: vec![wrap!(lit_wrap!(Obj::Fixnum(1))), wrap!(lit_wrap!(Obj::Fixnum(2)))],
+            args: vec![
+                wrap!(lit_wrap!(Obj::Fixnum(1))),
+                wrap!(lit_wrap!(Obj::Fixnum(2)))
+            ],
         }
     );
 
@@ -493,7 +505,7 @@ mod tests {
     test_case!(
         define,
         "(define x () 5)",
-        Ast::DefAst(Def::Def{
+        Ast::DefAst(Def::Def {
             name: "x".to_string(),
             formal_args: vec![],
             rhs: wrap!(lit_wrap!(Obj::Fixnum(5))),

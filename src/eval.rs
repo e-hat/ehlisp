@@ -45,7 +45,9 @@ fn prim_sub(args: Vec<wrap_t!(Obj)>) -> Result<wrap_t!(Obj)> {
     } else {
         match (&*args[0].borrow(), &*args[1].borrow()) {
             (Obj::Fixnum(l), Obj::Fixnum(r)) => Ok(wrap!(Obj::Fixnum(l - r))),
-            _ => Err(String::from("Type Error: expected two ints as args for '-'"))
+            _ => Err(String::from(
+                "Type Error: expected two ints as args for '-'",
+            )),
         }
     }
 }
@@ -168,17 +170,11 @@ impl Context {
                     pred.borrow()
                 )),
             },
-            Ast::And { l, r } => match (
-                &*self.eval(l)?.borrow(),
-                &*self.eval(r)?.borrow(),
-            ) {
+            Ast::And { l, r } => match (&*self.eval(l)?.borrow(), &*self.eval(r)?.borrow()) {
                 (Obj::Bool(l_res), Obj::Bool(r_res)) => Ok(wrap!(Obj::Bool(*l_res && *r_res))),
                 _ => Err("Type error: (and bool bool)".to_string()),
             },
-            Ast::Or { l, r } => match (
-                &*self.eval(l)?.borrow(),
-                &*self.eval(r)?.borrow(),
-            ) {
+            Ast::Or { l, r } => match (&*self.eval(l)?.borrow(), &*self.eval(r)?.borrow()) {
                 (Obj::Bool(l_res), Obj::Bool(r_res)) => Ok(wrap!(Obj::Bool(*l_res && *r_res))),
                 _ => Err("Type error: (or bool bool)".to_string()),
             },
@@ -253,13 +249,21 @@ impl Context {
                 self.env.insert(name.clone(), Some(res.clone()));
                 Ok(res)
             }
-            Def::Def { name, formal_args, rhs } => {
-                let res = self.eval(&wrap!(Ast::Lambda{ formal_args: formal_args.clone(), rhs: rhs.clone() }))?;
+            Def::Def {
+                name,
+                formal_args,
+                rhs,
+            } => {
+                let res = self.eval(&wrap!(Ast::Lambda {
+                    formal_args: formal_args.clone(),
+                    rhs: rhs.clone()
+                }))?;
                 if let Obj::Closure {
                     formal_args: _,
                     rhs: _,
                     env: cl_env,
-                } = &mut *res.borrow_mut() {
+                } = &mut *res.borrow_mut()
+                {
                     cl_env.insert(name.clone(), Some(res.clone()));
                     self.env.insert(name.clone(), Some(res.clone()));
                 } else {
