@@ -18,6 +18,10 @@ pub enum Ast {
         cons: wrap_t!(Ast),
         alt: wrap_t!(Ast),
     },
+    PairAccessor {
+        pattern: String,
+        arg: wrap_t!(Ast),
+    },
     And {
         l: wrap_t!(Ast),
         r: wrap_t!(Ast),
@@ -170,15 +174,34 @@ impl Ast {
                                 }
                             }
                             _ => {
-                                let mut args = Vec::new();
-                                args.reserve(items.len());
-                                for arg in items[1..].into_iter() {
-                                    args.push(Ast::from_sexp(arg)?);
+                                let as_bytes = &first_word[..].as_bytes();
+                                if as_bytes.len() >= 3
+                                    && as_bytes[0] == b'c'
+                                    && as_bytes[as_bytes.len() - 1] == b'r'
+                                    && contains_only_ad(&as_bytes[1..as_bytes.len() - 1])
+                                {
+                                    if items.len() != 2 {
+                                        Err("expected form (cxxr pair)".to_string())
+                                    } else {
+                                        Ok(wrap!(Ast::PairAccessor {
+                                            pattern: String::from_utf8(Vec::from(
+                                                &as_bytes[1..as_bytes.len() - 1]
+                                            ))
+                                            .expect("Given non-utf8 encoded string :["),
+                                            arg: Ast::from_sexp(&items[1])?,
+                                        }))
+                                    }
+                                } else {
+                                    let mut args = Vec::new();
+                                    args.reserve(items.len());
+                                    for arg in items[1..].into_iter() {
+                                        args.push(Ast::from_sexp(arg)?);
+                                    }
+                                    Ok(wrap!(Ast::Call {
+                                        f: Ast::from_sexp(&items[0])?,
+                                        args,
+                                    }))
                                 }
-                                Ok(wrap!(Ast::Call {
-                                    f: Ast::from_sexp(&items[0])?,
-                                    args,
-                                }))
                             }
                         }
                     } else {
@@ -205,6 +228,16 @@ impl Ast {
     }
 }
 
+fn contains_only_ad(chars: &[u8]) -> bool {
+    for c in chars {
+        if *c != b'a' && *c != b'd' {
+            return false;
+        }
+    }
+
+    true
+}
+
 fn parse_formal_args(sexp: &Obj) -> Result<Vec<String>> {
     sexp.to_vec()
         .iter()
@@ -229,6 +262,9 @@ impl fmt::Display for Ast {
                 cons.borrow(),
                 alt.borrow()
             )),
+            Ast::PairAccessor { pattern, arg } => {
+                f.write_str(&format!("(c{}r {})", pattern, arg.borrow()))
+            }
             Ast::And { l, r } => f.write_str(&format!("( {} ) and ( {} )", l.borrow(), r.borrow())),
             Ast::Or { l, r } => f.write_str(&format!("( {} ) or ( {} )", l.borrow(), r.borrow())),
             Ast::Apply { l, r } => {
@@ -286,6 +322,20 @@ impl PartialEq for Ast {
                 } = other
                 {
                     lpred == rpred && lcons == rcons && lalt == ralt
+                } else {
+                    false
+                }
+            }
+            Ast::PairAccessor {
+                pattern: lpattern,
+                arg: larg,
+            } => {
+                if let Ast::PairAccessor {
+                    pattern: rpattern,
+                    arg: rarg,
+                } = other
+                {
+                    lpattern == rpattern && larg == rarg
                 } else {
                     false
                 }
@@ -511,4 +561,21 @@ mod tests {
             rhs: wrap!(lit_wrap!(Obj::Fixnum(5))),
         })
     );
+
+    macro_rules! pair_accessor_pattern_case {
+        ($name:ident, $pattern:expr) => {
+            test_case!(
+                $name,
+                format!("(c{}r nil)", $pattern),
+                Ast::Call {
+                    f: wrap!(Ast::Var(format!("c{}r", $pattern))),
+                    args: vec![wrap!(Ast::Var(String::from("nil"))),]
+                }
+            );
+        };
+    }
+
+    pair_accessor_pattern_case!(pair_accessor_happy_path, "aaadddr");
+    pair_accessor_pattern_case!(pair_accessor_empty_pattern, "");
+    pair_accessor_pattern_case!(pair_accessor_invalid_char, "p");
 }

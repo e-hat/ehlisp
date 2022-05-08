@@ -221,6 +221,33 @@ impl Context {
                     pred.borrow()
                 )),
             },
+            Ast::PairAccessor { pattern, arg } => {
+                let first_pair = self.eval(arg)?;
+                let x = if let Obj::Pair( .. ) = &*first_pair.borrow() {
+                    let mut current = first_pair.clone();
+                    for c in pattern.chars() {
+                        let mut next: Option<wrap_t!(Obj)> = None;
+                        match (&*current.borrow(), c as u8) {
+                            (Obj::Pair(car, _), b'a') => {
+                                next = Some(car.clone())
+                            },
+                            (Obj::Pair(_, cdr), b'd') => {
+                                next = Some(cdr.clone());
+                            },
+                            (Obj::Pair( .. ), _) => {
+                                return Err(format!("Got unexpected char '{}' in pair accessor '{}'", c, pattern))
+                            },
+                            _ => {
+                                return Err(format!("Got non-pair argument to pair accessor. Got '{}'", current.borrow()))
+                            },
+                        };
+                        current = next.unwrap();
+                    }
+                    Ok(current)
+                } else {
+                    unimplemented!()
+                }; x
+            },
             Ast::And { l, r } => match (&*self.eval(l)?.borrow(), &*self.eval(r)?.borrow()) {
                 (Obj::Bool(l_res), Obj::Bool(r_res)) => Ok(wrap!(Obj::Bool(*l_res && *r_res))),
                 _ => Err("Type error: (and bool bool)".to_string()),
@@ -323,7 +350,10 @@ impl Context {
                     env: cl_env,
                 } = &mut *res.borrow_mut()
                 {
+                    // Memory leak happens here. If this line is commented mem does not leak.
+                    // cl_env contains res, which contains cl_env. Simple?
                     cl_env.insert(name.clone(), Some(res.clone()));
+                    // This is also possibly a mem leak.
                     self.env.insert(name.clone(), Some(res.clone()));
                 } else {
                     unreachable!()
@@ -481,6 +511,12 @@ mod tests {
     test_case!(
         cdr,
         "(cdr (pair 1 2))",
+        wrap!(Obj::Fixnum(2))
+    );
+    
+    test_case!(
+        caadr,
+        "(caadr (pair (pair (pair 1 2) 3) 4))",
         wrap!(Obj::Fixnum(2))
     );
 }
