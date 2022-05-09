@@ -3,12 +3,14 @@ use std::cell::RefCell;
 use std::rc::Weak;
 use std::cmp::PartialEq;
 use std::clone::Clone;
+use std::collections::HashMap;
 
 use crate::{parse::Obj, ast::Ast};
 
 pub struct Gc {
-    obj_pool: Vec<GcStrong<Obj>>,
-    ast_pool: Vec<GcStrong<Ast>>,
+    obj_pool: HashMap<u64, GcStrong<Obj>>,
+    ast_pool: HashMap<u64, GcStrong<Ast>>,
+    item_count: u64,
 }
 
 #[derive(Debug)]
@@ -45,22 +47,49 @@ impl<T> Clone for GcHandle<T> {
 impl Gc {
     pub fn new() -> Gc {
         Gc {
-            obj_pool: vec![],
-            ast_pool: vec![],
+            obj_pool: HashMap::new(),
+            ast_pool: HashMap::new(),
+            item_count: 0
         }
     }
 
     pub fn new_obj(&mut self, obj: Obj) -> GcHandle<Obj> {
-        Gc::new_t(&mut self.obj_pool, obj)
+        self.item_count += 1;
+        Gc::new_t(&mut self.obj_pool, self.item_count, obj)
     }
 
     pub fn new_ast(&mut self, ast: Ast) -> GcHandle<Ast> {
-        Gc::new_t(&mut self.ast_pool, ast)
+        self.item_count += 1;
+        Gc::new_t(&mut self.ast_pool, self.item_count, ast)
     }
 
-    fn new_t<T>(ts: &mut Vec<GcStrong<T>>, t: T) -> GcHandle<T> {
+    fn new_t<T>(ts: &mut HashMap<u64, GcStrong<T>>, id: u64, t: T) -> GcHandle<T> {
         let rc = Rc::new(RefCell::new(t));
-        ts.push(rc.clone());
+        ts.insert(id, rc.clone());
         GcHandle::new(Rc::downgrade(&rc))
+    }
+
+    pub fn sweep(&mut self) {
+        let mut dead_objs = Vec::new();
+        for (id, obj) in &self.obj_pool {
+            if Rc::strong_count(&obj) == 1 && Rc::weak_count(&obj) == 0 {
+                dead_objs.push(*id);
+                println!("Pruning '{}'", obj.borrow());
+            }
+        }
+        for id in dead_objs.iter() {
+            self.obj_pool.remove(id);
+        }
+
+        let mut dead_asts = Vec::new();
+        for (id, ast) in &self.ast_pool {
+            if Rc::strong_count(&ast) == 1 && Rc::weak_count(&ast) == 0 {
+                dead_asts.push(*id);
+                println!("Pruning '{}'", ast.borrow());
+            }
+        }
+        for id in dead_asts.iter() {
+            self.ast_pool.remove(id);
+        }
     }
 }

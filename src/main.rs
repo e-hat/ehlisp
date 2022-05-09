@@ -23,6 +23,7 @@ fn repl(stream: &mut parse::Stream) -> io::Result<()> {
             },
             Err(msg) => return Err(Error::new(ErrorKind::Other, msg)),
         }
+        gc.borrow_mut().sweep();
     }
 }
 
