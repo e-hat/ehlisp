@@ -1,11 +1,11 @@
-use std::rc::Rc;
 use std::cell::RefCell;
-use std::rc::Weak;
-use std::cmp::PartialEq;
 use std::clone::Clone;
+use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::rc::Weak;
 
-use crate::{parse::Obj, ast::Ast};
+use crate::{ast::Ast, parse::Obj};
 
 pub struct Gc {
     obj_pool: HashMap<u64, GcStrong<Obj>>,
@@ -14,7 +14,9 @@ pub struct Gc {
 }
 
 #[derive(Debug)]
-pub struct GcHandle<T> { inner: Weak<RefCell<T>> }
+pub struct GcHandle<T> {
+    inner: Weak<RefCell<T>>,
+}
 
 type GcStrong<T> = Rc<RefCell<T>>;
 
@@ -49,7 +51,7 @@ impl Gc {
         Gc {
             obj_pool: HashMap::new(),
             ast_pool: HashMap::new(),
-            item_count: 0
+            item_count: 0,
         }
     }
 
@@ -90,6 +92,38 @@ impl Gc {
         }
         for id in dead_asts.iter() {
             self.ast_pool.remove(id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+    
+    use crate::gc::*;
+
+    macro_rules! handle {
+        ($x:expr) => {
+            GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new($x))))
+        };
+    }
+    #[test]
+    fn pointer_cycle() {
+        let gc = Rc::new(RefCell::new(Gc::new()));
+        let obj = gc.borrow_mut().new_obj(Obj::Closure {
+            formal_args: Vec::new(),
+            rhs: handle!(Ast::Literal(handle!(Obj::Nil))),
+            env: HashMap::new(),
+        });
+        if let Obj::Closure {
+            formal_args: _,
+            rhs: _,
+            env,
+        } = &mut *obj.get().borrow_mut()
+        {
+            env.insert(String::from("hello"), Some(obj.clone()));
+        } else {
+            unreachable!()
         }
     }
 }

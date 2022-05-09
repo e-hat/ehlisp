@@ -370,10 +370,7 @@ impl Context {
                     env: cl_env,
                 } = &mut *res.get().borrow_mut()
                 {
-                    // Memory leak happens here. If this line is commented mem does not leak.
-                    // cl_env contains res, which contains cl_env. Simple?
                     cl_env.insert(name.clone(), Some(res.clone()));
-                    // This is also possibly a mem leak.
                     self.env.insert(name.clone(), Some(res.clone()));
                 } else {
                     unreachable!()
