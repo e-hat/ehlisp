@@ -7,7 +7,7 @@ use std::clone::Clone;
 use crate::{parse::Obj, ast::Ast};
 
 pub struct Gc {
-    pub obj_pool: Vec<GcStrong<Obj>>,
+    obj_pool: Vec<GcStrong<Obj>>,
     ast_pool: Vec<GcStrong<Ast>>,
 }
 
