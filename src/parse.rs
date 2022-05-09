@@ -1,16 +1,15 @@
-use std::cell::RefCell;
 use std::cmp::PartialEq;
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::io::{Error, ErrorKind};
-use std::rc::Rc;
 use std::str;
 
 use regex::Regex;
 
 use crate::ast::Ast;
 use crate::eval::{Env, Result as EvalResult};
+use crate::gc::{Gc, GcHandle};
 
 // Stream that is parsed from
 pub struct Stream<'a> {
@@ -53,38 +52,23 @@ fn unexpected(c: u8) -> Error {
     );
 }
 
-// I already have a lot of uses of Rc::new(RefCel::new()) and Rc<RefCell<>> throughout the
-// codebase, but I try to replace them with these macros where I can, since it was driving me
-// nuts.
-#[macro_export]
-macro_rules! wrap {
-    ($x:expr) => {
-        Rc::new(RefCell::new($x))
-    };
-}
-
-#[macro_export]
-macro_rules! wrap_t {
-    ($x:ident) => {
-        Rc<RefCell<$x>>
-    };
-}
-
-// S-expression data type. 
+// S-expression data type.
 // Obj::Primitive and Obj::Closure are never actually constructed directly in the parser. These
-// only appear during evaluation. 
-#[derive(Debug)]
+// only appear during evaluation.
 pub enum Obj {
     Fixnum(i32),
     Bool(bool),
     Local(String),
     Nil,
-    Pair(wrap_t!(Obj), wrap_t!(Obj)),
-    Primitive(String, fn(Vec<wrap_t!(Obj)>) -> EvalResult<wrap_t!(Obj)>),
-    Quote(wrap_t!(Obj)),
+    Pair(GcHandle<Obj>, GcHandle<Obj>),
+    Primitive(
+        String,
+        fn(Vec<GcHandle<Obj>>, &mut Gc) -> EvalResult<GcHandle<Obj>>,
+    ),
+    Quote(GcHandle<Obj>),
     Closure {
         formal_args: Vec<String>,
-        rhs: wrap_t!(Ast),
+        rhs: GcHandle<Ast>,
         env: Env,
     },
 }
@@ -98,40 +82,40 @@ impl Stream<'_> {
         }
     }
 
-    pub fn read_sexp(&mut self) -> io::Result<wrap_t!(Obj)> {
+    pub fn read_sexp(&mut self, gc: &mut Gc) -> io::Result<GcHandle<Obj>> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if try_digit_start(c, self)? {
             self.unread_char(c);
-            self.read_num().map(|n| wrap!(Obj::Fixnum(n)))
+            self.read_num().map(|n| gc.new_obj(Obj::Fixnum(n)))
         } else if c == b'#' {
             self.unread_char(c);
-            self.read_bool().map(|b| wrap!(Obj::Bool(b)))
+            self.read_bool().map(|b| gc.new_obj(Obj::Bool(b)))
         } else if c == b'\'' {
-            self.read_sexp().map(|q| wrap!(Obj::Quote(q)))
+            self.read_sexp(gc).map(|q| gc.new_obj(Obj::Quote(q)))
         } else if is_id_viable(c) {
             self.unread_char(c);
-            self.read_id().map(|l| wrap!(Obj::Local(l)))
+            self.read_id().map(|l| gc.new_obj(Obj::Local(l)))
         } else if c == b'(' {
-            self.read_list()
+            self.read_list(gc)
         } else {
             Err(unexpected(c))
         }
     }
 
-    fn read_list(&mut self) -> io::Result<wrap_t!(Obj)> {
+    fn read_list(&mut self, gc: &mut Gc) -> io::Result<GcHandle<Obj>> {
         self.eat_whitespace()?;
 
         let c = self.read_char()?;
         if c == b')' {
-            Ok(wrap!(Obj::Nil))
+            Ok(gc.new_obj(Obj::Nil))
         } else {
             self.unread_char(c);
-            let car = self.read_sexp()?;
-            let cdr = self.read_list()?;
+            let car = self.read_sexp(gc)?;
+            let cdr = self.read_list(gc)?;
 
-            Ok(wrap!(Obj::Pair(car, cdr)))
+            Ok(gc.new_obj(Obj::Pair(car, cdr)))
         }
     }
 
@@ -256,13 +240,19 @@ impl fmt::Display for Obj {
                 f.write_str(&format!("({})", res))
             }
             Obj::Primitive(name, _) => f.write_str(&format!("#<primitive:{}>", name)),
-            Obj::Quote(inner) => f.write_str(&format!("'{}", inner.borrow())),
+            Obj::Quote(inner) => f.write_str(&format!("'{}", inner.get().borrow())),
             Obj::Closure { .. } => f.write_str("#<closure>"),
         }
     }
 }
 
-// For testing purposes. This compares the values inside the S-expressions, not their pointers. 
+impl fmt::Debug for Obj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&format!("{}", self))
+    }
+}
+
+// For testing purposes. This compares the values inside the S-expressions, not their pointers.
 // Also, this is not at all related to evaluation. For example, if x = 5, then Obj::Local("x") and
 // Obj::Fixnum(5) would NOT be equal. An Obj::Local can't be equal to an Obj::Fixnum.
 impl PartialEq for Obj {
@@ -292,7 +282,8 @@ impl PartialEq for Obj {
             Obj::Nil => matches!(other, Obj::Nil),
             Obj::Pair(lcar, lcdr) => {
                 if let Obj::Pair(rcar, rcdr) = other {
-                    lcar.borrow().eq(&rcar.borrow()) && lcdr.borrow().eq(&rcdr.borrow())
+                    lcar.get().borrow().eq(&rcar.get().borrow())
+                        && lcdr.get().borrow().eq(&*rcdr.get().borrow())
                 } else {
                     false
                 }
@@ -300,7 +291,7 @@ impl PartialEq for Obj {
             Obj::Primitive(_, _) => false,
             Obj::Quote(self_inner) => {
                 if let Obj::Quote(other_inner) = other {
-                    self_inner == other_inner
+                    &*self_inner.get().borrow() == &*other_inner.get().borrow()
                 } else {
                     false
                 }
@@ -316,7 +307,9 @@ impl PartialEq for Obj {
                     env: env_other,
                 } = other
                 {
-                    formal_args == formal_args_other && rhs == rhs_other && env == env_other
+                    formal_args == formal_args_other
+                        && &*rhs.get().borrow() == &*rhs_other.get().borrow()
+                        && env == env_other
                 } else {
                     false
                 }
@@ -332,7 +325,7 @@ impl Obj {
     pub fn is_list(&self) -> bool {
         match self {
             Obj::Nil => true,
-            Obj::Pair(_, r) => r.borrow().is_list(),
+            Obj::Pair(_, r) => r.get().borrow().is_list(),
             _ => false,
         }
     }
@@ -340,8 +333,10 @@ impl Obj {
     fn print_list(&self) -> String {
         match self {
             Obj::Pair(l, rp) => {
-                let child_ref = rp.borrow();
-                let l_ref = l.borrow();
+                let rp_handle = rp.get();
+                let child_ref = rp_handle.borrow();
+                let l_handle = l.get();
+                let l_ref = l_handle.borrow();
                 match &*child_ref {
                     Obj::Nil => format!("{}", l_ref),
                     r => format!("{} {}", l_ref, r.print_list()),
@@ -353,16 +348,16 @@ impl Obj {
 
     fn print_pair(&self) -> String {
         match self {
-            Obj::Pair(l, r) => format!("{} . {}", l.borrow(), r.borrow()),
+            Obj::Pair(l, r) => format!("{} . {}", l.get().borrow(), r.get().borrow()),
             _ => panic!("Inconceivable!"),
         }
     }
 
-    pub fn to_vec(&self) -> Vec<wrap_t!(Obj)> {
+    pub fn to_vec(&self) -> Vec<GcHandle<Obj>> {
         match self {
             Obj::Pair(car, cdr) => {
                 let mut res = vec![car.clone()];
-                let mut tail = cdr.borrow().to_vec();
+                let mut tail = cdr.get().borrow().to_vec();
                 res.append(&mut tail);
                 res
             }
@@ -371,16 +366,16 @@ impl Obj {
         }
     }
 
-    pub fn from_vec(items: &Vec<wrap_t!(Obj)>) -> wrap_t!(Obj) {
+    pub fn from_vec(items: &Vec<GcHandle<Obj>>, gc: &mut Gc) -> GcHandle<Obj> {
         if items.len() == 0 {
-            wrap!(Obj::Nil)
+            gc.new_obj(Obj::Nil)
         } else {
-            let head = wrap!(Obj::Nil);
+            let head = gc.new_obj(Obj::Nil);
             let mut tail = head.clone();
             for obj in items {
-                let new_tail = wrap!(Obj::Nil);
+                let new_tail = gc.new_obj(Obj::Nil);
                 let new = Obj::Pair(obj.clone(), new_tail.clone());
-                tail.replace(new);
+                tail.get().replace(new);
                 tail = new_tail.clone();
             }
 
@@ -393,6 +388,10 @@ impl Obj {
 mod tests {
     use super::*;
     use std::assert;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use crate::gc::{Gc, GcHandle};
 
     macro_rules! test_case {
         ($name:ident, $input:expr, $expected:expr) => {
@@ -402,9 +401,11 @@ mod tests {
                 let mut input = input_str.as_bytes();
                 let mut stream = Stream::new(&mut input);
 
-                let res = stream.read_sexp();
+                let mut gc = Gc::new();
+
+                let res = stream.read_sexp(&mut gc);
                 assert!(!res.is_err());
-                assert_eq!(&*res.unwrap().borrow(), &$expected);
+                assert_eq!(&*res.unwrap().get().borrow(), &$expected);
             }
         };
     }
@@ -422,19 +423,12 @@ mod tests {
     );
 
     test_case!(nil, "()", Obj::Nil);
-    test_case!(
-        pair,
-        "(42 69 420)",
-        *Obj::from_vec(&vec![
-            wrap!(Obj::Fixnum(42)),
-            wrap!(Obj::Fixnum(69)),
-            wrap!(Obj::Fixnum(420))
-        ]).borrow()
-    );
 
     test_case!(
         quote,
         "'a'\n",
-        Obj::Quote(wrap!(Obj::Local("a'".to_string())))
+        Obj::Quote(GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new(
+            Obj::Local("a'".to_string())
+        )))))
     );
 }
