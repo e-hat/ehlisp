@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::ast::Ast;
 use crate::eval::{Env, Result as EvalResult};
-use crate::gc::{Gc, GcHandle};
+use crate::gc::{Gc, GcGraphNode, GcHandle};
 
 // Stream that is parsed from
 pub struct Stream<'a> {
@@ -71,6 +71,13 @@ pub enum Obj {
         rhs: GcHandle<Ast>,
         env: Env,
     },
+}
+
+impl GcGraphNode for Obj {
+    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>> {
+        let res: Vec<Box<dyn GcGraphNode>> = Vec::new();
+        res
+    }
 }
 
 impl Stream<'_> {
@@ -391,7 +398,8 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use crate::gc::{Gc, GcHandle};
+    use crate::gc::{Gc, GcHandle, GcData};
+    use crate::handle;
 
     macro_rules! test_case {
         ($name:ident, $input:expr, $expected:expr) => {
@@ -427,8 +435,6 @@ mod tests {
     test_case!(
         quote,
         "'a'\n",
-        Obj::Quote(GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new(
-            Obj::Local("a'".to_string())
-        )))))
+        Obj::Quote(handle!(Obj::Local("a'".to_string())))
     );
 }

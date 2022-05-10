@@ -3,7 +3,7 @@ use std::cmp::PartialEq;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::gc::{Gc, GcHandle};
+use crate::gc::{Gc, GcHandle, GcStrong, GcGraphNode};
 use crate::parse::Obj;
 
 // A representation of expressions/programs that lends itself better to traversal and evaluation.
@@ -42,6 +42,12 @@ pub enum Ast {
         rhs: GcHandle<Ast>,
     },
     DefAst(Def),
+}
+
+impl GcGraphNode for Ast {
+    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>> {
+        Vec::new()
+    }
 }
 
 // This is for ASTs that change the evaluation's environment. I don't think we need this Def::Ast
@@ -392,11 +398,11 @@ impl PartialEq for Ast {
                         && largs
                             .iter()
                             .map(|x| x.get())
-                            .collect::<Vec<Rc<RefCell<Ast>>>>()
+                            .collect::<Vec<GcStrong<Ast>>>()
                             == rargs
                                 .iter()
                                 .map(|x| x.get())
-                                .collect::<Vec<Rc<RefCell<Ast>>>>()
+                                .collect::<Vec<GcStrong<Ast>>>()
                 } else {
                     false
                 }

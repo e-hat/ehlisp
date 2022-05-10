@@ -1,3 +1,5 @@
+#![feature(test)]
+
 mod ast;
 mod eval;
 mod parse;
