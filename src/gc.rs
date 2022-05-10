@@ -208,7 +208,7 @@ impl Gc {
 #[macro_export]
 macro_rules! handle {
     ($x:expr) => {
-        GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new(GcData::new($x)))))
+        crate::gc::GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new(crate::gc::GcData::new($x)))))
     };
 }
 
@@ -237,7 +237,7 @@ mod tests {
                 formal_args: _,
                 rhs: _,
                 env,
-            } = *obj.get().borrow_mut()
+            } = &mut *obj.get().borrow_mut()
             {
                 env.insert(String::from("hello"), Some(obj.clone()));
             } else {

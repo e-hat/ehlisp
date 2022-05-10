@@ -478,6 +478,7 @@ mod tests {
 
     use crate::gc::Gc;
     use crate::parse::*;
+    use crate::handle;
 
     macro_rules! test_case {
         ($name:ident, failure, $input:expr) => {
@@ -508,12 +509,6 @@ mod tests {
                 assert!(!res.is_err());
                 assert_eq!(&*res.unwrap().get().borrow(), &$expected);
             }
-        };
-    }
-
-    macro_rules! handle {
-        ($x:expr) => {
-            GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new($x))))
         };
     }
 
