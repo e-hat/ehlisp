@@ -1,4 +1,4 @@
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 use std::clone::Clone;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
@@ -7,12 +7,15 @@ use std::rc::Weak;
 
 use crate::{ast::Ast, parse::Obj};
 
+// The global Gc struct. This could possibly be handled by a crate::eval::Context.
 pub struct Gc {
     obj_pool: HashMap<u64, GcStrong<Obj>>,
     ast_pool: HashMap<u64, GcStrong<Ast>>,
     item_count: u64,
 }
 
+// A "strong" pointer to T, an object on the heap. Identical interface to std::rc::Rc<RefCell<T>>.
+// Please do not make reference cycles with this type :]
 pub struct GcStrong<T>(Rc<RefCell<GcData<T>>>);
 
 impl<T: GcGraphNode> GcStrong<T> {
@@ -64,11 +67,13 @@ impl<T> Clone for GcStrong<T> {
     }
 }
 
+// For traversing/marking the object graph.
 pub trait GcGraphNode {
     fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>>;
 }
 
 // GcData definition/trait impls
+// A metadata wrapper for a T allocated on the Gc's heap.
 #[derive(Debug)]
 pub struct GcData<T> {
     data: T,
@@ -111,6 +116,8 @@ impl<T> std::ops::Deref for GcData<T> {
 }
 
 // GcHandle definition/trait impls
+// GcHandle<T> is what the client of the Gc should be storing to reference the T's allocated on the Gc's
+// heap. To read/mutate the value behind a GcHandle, call `get()` to get a GcStrong<T> to it.
 #[derive(Debug)]
 pub struct GcHandle<T: GcGraphNode> {
     inner: Weak<RefCell<GcData<T>>>,
@@ -145,7 +152,7 @@ impl<T: GcGraphNode> GcGraphNode for GcHandle<T> {
     }
 }
 
-// Gc impls
+// Gc interface/impl
 impl Gc {
     pub fn new() -> Gc {
         Gc {
