@@ -1,10 +1,12 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut, Cell};
 use std::clone::Clone;
 use std::cmp::PartialEq;
 use std::rc::Rc;
 use std::rc::Weak;
 
 use crate::{ast::Ast, parse::Obj};
+
+static MEM_CAP: usize = 1000;
 
 // The global Gc struct. This could possibly be handled by a crate::eval::Context.
 pub struct Gc {
@@ -50,7 +52,7 @@ impl<T: GcGraphNode> GcStrong<T> {
     }
 
     pub fn color(&self) -> bool {
-        self.0.borrow().color
+        self.0.borrow().color.get()
     }
 }
 
@@ -80,18 +82,18 @@ pub enum GcNodeType {
 impl GcNodeType {
     fn color(&self) -> bool {
         match self {
-            GcNodeType::Obj(handle) => handle.get().0.borrow().color,
-            GcNodeType::Ast(handle) => handle.get().0.borrow().color,
+            GcNodeType::Obj(handle) => handle.get().0.borrow().color.get(),
+            GcNodeType::Ast(handle) => handle.get().0.borrow().color.get(),
         }
     }
 
     fn set_color(&self, color: bool) {
         match self {
             GcNodeType::Obj(handle) => {
-                handle.get().0.borrow_mut().color = color;
+                handle.get().0.borrow().color.set(color);
             }
             GcNodeType::Ast(handle) => {
-                handle.get().0.borrow_mut().color = color;
+                handle.get().0.borrow().color.set(color);
             }
         }
     }
@@ -116,7 +118,7 @@ pub trait GcGraphNode {
 #[derive(Debug)]
 pub struct GcData<T> {
     data: T,
-    color: bool,
+    color: Cell<bool>,
 }
 
 impl<T: PartialEq> PartialEq for GcData<T> {
@@ -127,7 +129,7 @@ impl<T: PartialEq> PartialEq for GcData<T> {
 
 impl<T> GcData<T> {
     pub fn new(data: T, color: bool) -> Self {
-        GcData { data, color }
+        GcData { data, color: Cell::new(color) }
     }
 }
 
@@ -235,6 +237,12 @@ impl Gc {
         );
     }
 
+    pub fn needs_to_collect(&self) -> bool {
+        self.print_status();
+        self.obj_pool.len() * std::mem::size_of::<Obj>()
+            + self.obj_pool.len() * std::mem::size_of::<Ast>() > MEM_CAP
+    }
+
     pub fn collect(&mut self, reachable_handles: Vec<GcNodeType>) {
         println!("Before anything");
         self.print_status();
@@ -323,7 +331,7 @@ mod tests {
 
                 obj.get()
             };
-            // We don't have any reachable GcHandle's, but the # of them is 1! 
+            // We don't have any reachable GcHandle's, but the # of them is 1!
             // Eg, we have an unreachable pointer that still is out there somewhere!
             assert_eq!(rc.weak_count(), 1);
             assert_eq!(rc.strong_count(), 2);
@@ -355,7 +363,7 @@ mod tests {
         gc.borrow_mut().collect_no_handles();
         assert!(gc.borrow().obj_pool.is_empty());
 
-        { 
+        {
             let handle = gc.borrow_mut().new_obj(Obj::Nil);
             assert_eq!(gc.borrow().obj_pool.len(), 1);
             assert_eq!(gc.borrow().obj_pool[0].strong_count(), 1);
@@ -368,7 +376,7 @@ mod tests {
 
         gc.borrow_mut().collect_no_handles();
         assert!(gc.borrow().obj_pool.is_empty());
-        
+
         {
             let rc = gc.borrow_mut().new_obj(Obj::Nil).get();
             assert_eq!(gc.borrow().obj_pool.len(), 1);
