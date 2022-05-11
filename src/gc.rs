@@ -218,7 +218,7 @@ impl Gc {
 
     // We call em "No-Handles". These are pointers in our pool that don't have any handles out
     // there at all, not even unreachable ones. We should most definitely clean these up.
-    fn collect_no_handles(&mut self) {
+    pub fn collect_no_handles(&mut self) {
         Self::collect_no_handles_t(&mut self.obj_pool);
         Self::collect_no_handles_t(&mut self.ast_pool);
 
