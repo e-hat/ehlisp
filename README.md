@@ -1,9 +1,9 @@
 # ehlisp
 ## About/Roadmap
 - [x] ~~I am currently translating [this tutorial](https://bernsteinbear.com/blog/lisp/00_fundamentals/) 
-into rust.~~ I'm all done! I've got a working lisp interpr`eter! 
-- [X] I'm doing garbage collection now! 
-- [ ] Now I wanna try to make the garbage collection a little multithreaded. Hopefully it boosts performance.
+into rust.~~ I've got a working lisp interpreter! 
+- [X] ~~Garbage collection~~ There now is a working garbage collector!
+- [ ] I want to improve garbage collection by either deciding when it happens more effectively or parallelizing some of it, possibly both.
 - [ ] Not sure what's next!
 
 This is also my first ever time using rust! I am currently loving it. I can't believe I survive in C++ without pattern
