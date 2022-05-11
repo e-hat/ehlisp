@@ -1,5 +1,5 @@
 use crate::ast::{Ast, Def};
-use crate::gc::{Gc, GcHandle};
+use crate::gc::{Gc, GcGraphNode, GcNodeType, GcHandle};
 use crate::parse::Obj;
 
 use std::cell::RefCell;
@@ -381,6 +381,17 @@ impl Context {
     }
 }
 
+impl GcGraphNode for Context {
+    fn neighbors(&self) -> Vec<GcNodeType> {
+        self.env
+            .values()
+            .cloned()
+            .filter(|x| x.is_some())
+            .map(|x| GcNodeType::Obj(x.unwrap().clone()))
+            .collect::<Vec<_>>()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,9 +399,9 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use crate::gc::{Gc, GcHandle, GcData};
-    use crate::parse::*;
+    use crate::gc::Gc;
     use crate::handle;
+    use crate::parse::*;
 
     macro_rules! test_case {
         ($name:ident, failure, $input:expr) => {
@@ -486,16 +497,8 @@ mod tests {
 
     test_case!(call_wrong_type, failure, "(1 2 3)");
 
-    test_case!(
-        apply_with_list,
-        "(apply + (list 1 2))",
-        Obj::Fixnum(3)
-    );
-    test_case!(
-        apply_with_quote,
-        "(apply + '(1 2))",
-        Obj::Fixnum(3)
-    );
+    test_case!(apply_with_list, "(apply + (list 1 2))", Obj::Fixnum(3));
+    test_case!(apply_with_quote, "(apply + '(1 2))", Obj::Fixnum(3));
     test_case!(apply_plus_with_empty_args, failure, "(apply + '())");
 
     test_case!(
@@ -511,12 +514,7 @@ mod tests {
         Obj::Fixnum(2)
     );
 
-    test_case!(
-        define,
-        ["(define f () 5)"],
-        "(f)",
-        Obj::Fixnum(5)
-    );
+    test_case!(define, ["(define f () 5)"], "(f)", Obj::Fixnum(5));
     test_case!(
         factorial,
         ["(define factorial (n) (if (= n 1) 1 (* n (factorial (- n 1)))))"],
@@ -525,11 +523,7 @@ mod tests {
     );
 
     test_case!(is_atom_true, "(atom? 1)", Obj::Bool(true));
-    test_case!(
-        is_atom_false,
-        "(atom? (pair 0 1))",
-        Obj::Bool(false)
-    );
+    test_case!(is_atom_false, "(atom? (pair 0 1))", Obj::Bool(false));
 
     test_case!(car, "(car (pair 1 2))", Obj::Fixnum(1));
     test_case!(cdr, "(cdr (pair 1 2))", Obj::Fixnum(2));

@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::ast::Ast;
 use crate::eval::{Env, Result as EvalResult};
-use crate::gc::{Gc, GcGraphNode, GcHandle};
+use crate::gc::{Gc, GcGraphNode, GcHandle, GcNodeType};
 
 // Stream that is parsed from
 pub struct Stream<'a> {
@@ -74,9 +74,29 @@ pub enum Obj {
 }
 
 impl GcGraphNode for Obj {
-    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>> {
-        let res: Vec<Box<dyn GcGraphNode>> = Vec::new();
-        res
+    fn neighbors(&self) -> Vec<GcNodeType> {
+        match self {
+            Obj::Pair(car, cdr) => vec![GcNodeType::Obj(car.clone()), GcNodeType::Obj(cdr.clone())],
+            Obj::Quote(inner) => vec![GcNodeType::Obj(inner.clone())],
+            Obj::Closure {
+                formal_args: _,
+                rhs,
+                env,
+            } => {
+                let mut res = Vec::new();
+                res.push(GcNodeType::Ast(rhs.clone()));
+                res.append(
+                    &mut env
+                        .values()
+                        .cloned()
+                        .filter(|x| x.is_some())
+                        .map(|x| GcNodeType::Obj(x.unwrap().clone()))
+                        .collect::<Vec<_>>(),
+                );
+                res
+            }
+            _ => Vec::new(),
+        }
     }
 }
 
@@ -398,7 +418,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use crate::gc::{Gc, GcHandle, GcData};
+    use crate::gc::Gc;
     use crate::handle;
 
     macro_rules! test_case {

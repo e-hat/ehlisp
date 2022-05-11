@@ -3,7 +3,7 @@ use std::cmp::PartialEq;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::gc::{Gc, GcHandle, GcStrong, GcGraphNode};
+use crate::gc::{Gc, GcGraphNode, GcHandle, GcNodeType, GcStrong};
 use crate::parse::Obj;
 
 // A representation of expressions/programs that lends itself better to traversal and evaluation.
@@ -45,8 +45,43 @@ pub enum Ast {
 }
 
 impl GcGraphNode for Ast {
-    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>> {
-        Vec::new()
+    fn neighbors(&self) -> Vec<GcNodeType> {
+        match self {
+            Ast::Literal(obj) => vec![GcNodeType::Obj(obj.clone())],
+            Ast::Var(_) => Vec::new(),
+            Ast::If { pred, cons, alt } => vec![pred.clone(), cons.clone(), alt.clone()]
+                .iter()
+                .map(|x| GcNodeType::Ast(x.clone()))
+                .collect::<Vec<_>>(),
+            Ast::PairAccessor { pattern: _, arg } => vec![GcNodeType::Ast(arg.clone())],
+            Ast::And { l, r } => vec![l.clone(), r.clone()]
+                .iter()
+                .map(|x| GcNodeType::Ast(x.clone()))
+                .collect::<Vec<_>>(),
+            Ast::Or { l, r } => vec![l.clone(), r.clone()]
+                .iter()
+                .map(|x| GcNodeType::Ast(x.clone()))
+                .collect::<Vec<_>>(),
+            Ast::Apply { l, r } => vec![l.clone(), r.clone()]
+                .iter()
+                .map(|x| GcNodeType::Ast(x.clone()))
+                .collect::<Vec<_>>(),
+            Ast::Call { f, args } => {
+                let mut res = vec![GcNodeType::Ast(f.clone())];
+                res.extend(args.clone().iter().map(|x| GcNodeType::Ast(x.clone())));
+                res
+            }
+            Ast::Lambda {
+                formal_args: _,
+                rhs,
+            } => vec![GcNodeType::Ast(rhs.clone())],
+            Ast::DefAst(Def::Val { name: _, rhs }) => vec![GcNodeType::Ast(rhs.clone())],
+            Ast::DefAst(Def::Def {
+                name: _,
+                formal_args: _,
+                rhs,
+            }) => vec![GcNodeType::Ast(rhs.clone())],
+        }
     }
 }
 
@@ -116,9 +151,7 @@ impl Ast {
                                 } else {
                                     let l = Ast::from_sexp(&items[1], gc.clone())?;
                                     let r = Ast::from_sexp(&items[2], gc.clone())?;
-                                    Ok(gc.borrow_mut().new_ast(Ast::Or {
-                                        l, r
-                                    }))
+                                    Ok(gc.borrow_mut().new_ast(Ast::Or { l, r }))
                                 }
                             }
                             "val" => {
@@ -142,9 +175,7 @@ impl Ast {
                                 } else {
                                     let l = Ast::from_sexp(&items[1], gc.clone())?;
                                     let r = Ast::from_sexp(&items[2], gc.clone())?;
-                                    Ok(gc.borrow_mut().new_ast(Ast::Apply {
-                                        l, r
-                                    }))
+                                    Ok(gc.borrow_mut().new_ast(Ast::Apply { l, r }))
                                 }
                             }
                             "lambda" => {
@@ -153,10 +184,7 @@ impl Ast {
                                 } else {
                                     let formal_args = parse_formal_args(&*items[1].get().borrow())?;
                                     let rhs = Ast::from_sexp(&items[2], gc.clone())?;
-                                    Ok(gc.borrow_mut().new_ast(Ast::Lambda {
-                                        formal_args,
-                                        rhs,
-                                    }))
+                                    Ok(gc.borrow_mut().new_ast(Ast::Lambda { formal_args, rhs }))
                                 }
                             }
                             "define" => {
@@ -197,7 +225,7 @@ impl Ast {
                                                 &as_bytes[1..as_bytes.len() - 1],
                                             ))
                                             .expect("Given non-utf8 encoded string :["),
-                                            arg
+                                            arg,
                                         }))
                                     }
                                 } else {
@@ -223,10 +251,7 @@ impl Ast {
                             args.push(Ast::from_sexp(arg, gc.clone())?);
                         }
                         let f = Ast::from_sexp(&items[0], gc.clone())?;
-                        Ok(gc.borrow_mut().new_ast(Ast::Call {
-                            f,
-                            args,
-                        }))
+                        Ok(gc.borrow_mut().new_ast(Ast::Call { f, args }))
                     };
                     x
                 } else {
@@ -477,8 +502,8 @@ mod tests {
     use std::rc::Rc;
 
     use crate::gc::Gc;
-    use crate::parse::*;
     use crate::handle;
+    use crate::parse::*;
 
     macro_rules! test_case {
         ($name:ident, failure, $input:expr) => {

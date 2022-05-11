@@ -2,17 +2,18 @@
 
 mod ast;
 mod eval;
-mod parse;
 mod gc;
+mod parse;
 
+use std::cell::RefCell;
 use std::io;
 use std::io::Write;
 use std::io::{Error, ErrorKind};
 use std::rc::Rc;
-use std::cell::RefCell;
 
-fn repl(stream: &mut parse::Stream) -> io::Result<()> {
-    let gc = Rc::new(RefCell::new(gc::Gc::new()));
+use gc::GcGraphNode;
+
+fn repl(stream: &mut parse::Stream, gc: &Rc<RefCell<gc::Gc>>) -> io::Result<()> {
     let mut ctx = eval::Context::new(gc.clone());
     loop {
         print!("> ");
@@ -25,14 +26,15 @@ fn repl(stream: &mut parse::Stream) -> io::Result<()> {
             },
             Err(msg) => return Err(Error::new(ErrorKind::Other, msg)),
         }
-        gc.borrow_mut().sweep();
+        gc.borrow_mut().collect(ctx.neighbors());
     }
 }
 
 fn main() {
     let mut stdin = io::stdin();
     let mut stream = parse::Stream::new(&mut stdin);
-    match repl(&mut stream) {
+    let gc = Rc::new(RefCell::new(gc::Gc::new()));
+    match repl(&mut stream, &gc) {
         Ok(()) => println!("Goodbye! :]"),
         Err(msg) => println!("Error encountered:\n{}", msg),
     }

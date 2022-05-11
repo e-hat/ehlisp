@@ -1,7 +1,6 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::clone::Clone;
 use std::cmp::PartialEq;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -9,13 +8,15 @@ use crate::{ast::Ast, parse::Obj};
 
 // The global Gc struct. This could possibly be handled by a crate::eval::Context.
 pub struct Gc {
-    obj_pool: HashMap<u64, GcStrong<Obj>>,
-    ast_pool: HashMap<u64, GcStrong<Ast>>,
-    item_count: u64,
+    obj_pool: Vec<GcStrong<Obj>>,
+    ast_pool: Vec<GcStrong<Ast>>,
+    current_color: bool,
 }
 
-// A "strong" pointer to T, an object on the heap. Identical interface to std::rc::Rc<RefCell<T>>.
+// A "strong" pointer to T, an object on the heap. Identical interface to Rc<RefCell<T>>.
 // Please do not make reference cycles with this type :]
+// Use this when you actual need to use the value behind a handle, for both reading/writing with
+// borrow()/borrow_mut() respectively.
 pub struct GcStrong<T>(Rc<RefCell<GcData<T>>>);
 
 impl<T: GcGraphNode> GcStrong<T> {
@@ -24,19 +25,19 @@ impl<T: GcGraphNode> GcStrong<T> {
     }
 
     pub fn replace(&self, data: T) {
-        let marked: bool = self.0.borrow().marked;
-        self.0.replace(GcData { data, marked });
+        let mut inner = self.0.borrow_mut();
+        inner.data = data;
     }
 
     pub fn get_handle(&self) -> GcHandle<T> {
         GcHandle::new(Rc::downgrade(&self.0))
     }
 
-    pub fn strong_count(&self) -> usize {
+    fn strong_count(&self) -> usize {
         Rc::strong_count(&self.0)
     }
 
-    pub fn weak_count(&self) -> usize {
+    fn weak_count(&self) -> usize {
         Rc::weak_count(&self.0)
     }
 
@@ -45,7 +46,11 @@ impl<T: GcGraphNode> GcStrong<T> {
     }
 
     pub fn borrow_mut(&mut self) -> RefMut<T> {
-        RefMut::map(self.0.borrow_mut(), |x: &mut GcData<T>| &mut x.data)
+        RefMut::map(self.0.borrow_mut(), |x| &mut x.data)
+    }
+
+    pub fn color(&self) -> bool {
+        self.0.borrow().color
     }
 }
 
@@ -67,9 +72,43 @@ impl<T> Clone for GcStrong<T> {
     }
 }
 
+pub enum GcNodeType {
+    Obj(GcHandle<Obj>),
+    Ast(GcHandle<Ast>),
+}
+
+impl GcNodeType {
+    fn color(&self) -> bool {
+        match self {
+            GcNodeType::Obj(handle) => handle.get().0.borrow().color,
+            GcNodeType::Ast(handle) => handle.get().0.borrow().color,
+        }
+    }
+
+    fn set_color(&self, color: bool) {
+        match self {
+            GcNodeType::Obj(handle) => {
+                handle.get().0.borrow_mut().color = color;
+            }
+            GcNodeType::Ast(handle) => {
+                handle.get().0.borrow_mut().color = color;
+            }
+        }
+    }
+}
+
+impl GcGraphNode for GcNodeType {
+    fn neighbors(&self) -> Vec<GcNodeType> {
+        match self {
+            GcNodeType::Obj(handle) => handle.neighbors(),
+            GcNodeType::Ast(handle) => handle.neighbors(),
+        }
+    }
+}
+
 // For traversing/marking the object graph.
 pub trait GcGraphNode {
-    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>>;
+    fn neighbors(&self) -> Vec<GcNodeType>;
 }
 
 // GcData definition/trait impls
@@ -77,7 +116,7 @@ pub trait GcGraphNode {
 #[derive(Debug)]
 pub struct GcData<T> {
     data: T,
-    marked: bool,
+    color: bool,
 }
 
 impl<T: PartialEq> PartialEq for GcData<T> {
@@ -87,11 +126,8 @@ impl<T: PartialEq> PartialEq for GcData<T> {
 }
 
 impl<T> GcData<T> {
-    pub fn new(data: T) -> Self {
-        GcData {
-            data,
-            marked: false,
-        }
+    pub fn new(data: T, color: bool) -> Self {
+        GcData { data, color }
     }
 }
 
@@ -102,7 +138,7 @@ impl<T: std::fmt::Display> std::fmt::Display for GcData<T> {
 }
 
 impl<T: GcGraphNode> GcGraphNode for GcData<T> {
-    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>> {
+    fn neighbors(&self) -> Vec<GcNodeType> {
         self.data.neighbors()
     }
 }
@@ -118,6 +154,7 @@ impl<T> std::ops::Deref for GcData<T> {
 // GcHandle definition/trait impls
 // GcHandle<T> is what the client of the Gc should be storing to reference the T's allocated on the Gc's
 // heap. To read/mutate the value behind a GcHandle, call `get()` to get a GcStrong<T> to it.
+// Go ahead! Make reference cycles with this type! I dare you!
 #[derive(Debug)]
 pub struct GcHandle<T: GcGraphNode> {
     inner: Weak<RefCell<GcData<T>>>,
@@ -146,7 +183,7 @@ impl<T: GcGraphNode> Clone for GcHandle<T> {
 }
 
 impl<T: GcGraphNode> GcGraphNode for GcHandle<T> {
-    fn neighbors(&self) -> Vec<Box<dyn GcGraphNode>> {
+    fn neighbors(&self) -> Vec<GcNodeType> {
         // don't recurse
         self.get().borrow().neighbors()
     }
@@ -156,96 +193,194 @@ impl<T: GcGraphNode> GcGraphNode for GcHandle<T> {
 impl Gc {
     pub fn new() -> Gc {
         Gc {
-            obj_pool: HashMap::new(),
-            ast_pool: HashMap::new(),
-            item_count: 0,
+            obj_pool: Vec::new(),
+            ast_pool: Vec::new(),
+            current_color: false,
         }
     }
 
     pub fn new_obj(&mut self, obj: Obj) -> GcHandle<Obj> {
-        self.item_count += 1;
-        Gc::new_t(&mut self.obj_pool, self.item_count, obj)
+        Gc::new_t(&mut self.obj_pool, obj, self.current_color)
     }
 
     pub fn new_ast(&mut self, ast: Ast) -> GcHandle<Ast> {
-        self.item_count += 1;
-        Gc::new_t(&mut self.ast_pool, self.item_count, ast)
+        Gc::new_t(&mut self.ast_pool, ast, self.current_color)
     }
 
-    fn new_t<T: GcGraphNode>(ts: &mut HashMap<u64, GcStrong<T>>, id: u64, t: T) -> GcHandle<T> {
-        let rc = GcStrong::new(Rc::new(RefCell::new(GcData::new(t))));
-        ts.insert(id, rc.clone());
-        rc.get_handle()
+    fn new_t<T: GcGraphNode>(ts: &mut Vec<GcStrong<T>>, t: T, color: bool) -> GcHandle<T> {
+        let rc = GcStrong::new(Rc::new(RefCell::new(GcData::new(t, color))));
+        let res = rc.get_handle();
+        ts.push(rc);
+        res
     }
 
-    pub fn sweep(&mut self) {
-        let mut dead_objs = Vec::new();
-        for (id, obj) in &self.obj_pool {
-            if obj.strong_count() == 1 && obj.weak_count() == 0 {
-                dead_objs.push(*id);
-                println!("Pruning '{}'", obj.borrow());
+    // We call em "No-Handles". These are pointers in our pool that don't have any handles out
+    // there at all, not even unreachable ones. We should most definitely clean these up.
+    fn collect_no_handles(&mut self) {
+        Self::collect_no_handles_t(&mut self.obj_pool);
+        Self::collect_no_handles_t(&mut self.ast_pool);
+
+        self.print_status();
+    }
+
+    fn collect_no_handles_t<T: GcGraphNode>(vec: &mut Vec<GcStrong<T>>) {
+        vec.retain(|x| x.weak_count() > 0 || x.strong_count() > 1);
+    }
+
+    fn print_status(&self) {
+        println!(
+            "Obj pool size: {}b\nAst pool size: {}b",
+            self.obj_pool.len() * std::mem::size_of::<Obj>(),
+            self.ast_pool.len() * std::mem::size_of::<Ast>(),
+        );
+    }
+
+    pub fn collect(&mut self, reachable_handles: Vec<GcNodeType>) {
+        println!("Before anything");
+        self.print_status();
+        println!();
+
+        Self::collect_no_handles_t(&mut self.obj_pool);
+        Self::collect_no_handles_t(&mut self.ast_pool);
+        println!("After collecting unreachables");
+        self.print_status();
+        println!();
+
+        // Mark (starting with [handles])
+        self.mark(reachable_handles);
+
+        // Sweep over self.obj_pool and self.ast_pool
+        self.obj_pool
+            .retain(|x: &GcStrong<Obj>| x.color() != self.current_color);
+        self.ast_pool
+            .retain(|x: &GcStrong<Ast>| x.color() != self.current_color);
+        println!("After sweeping");
+        self.print_status();
+        println!();
+
+        self.current_color = !self.current_color;
+    }
+
+    fn mark(&self, handles: Vec<GcNodeType>) {
+        use std::collections::VecDeque;
+        let mut worklist = VecDeque::from(handles);
+
+        while !worklist.is_empty() {
+            let next = worklist.pop_front().unwrap();
+            if next.color() == self.current_color {
+                next.set_color(!self.current_color);
+                worklist.append(&mut VecDeque::from(next.neighbors()));
             }
         }
-        for id in dead_objs.iter() {
-            self.obj_pool.remove(id);
-        }
-
-        let mut dead_asts = Vec::new();
-        for (id, ast) in &self.ast_pool {
-            if ast.strong_count() == 1 && ast.weak_count() == 0 {
-                dead_asts.push(*id);
-                println!("Pruning '{}'", ast.borrow());
-            }
-        }
-        for id in dead_asts.iter() {
-            self.ast_pool.remove(id);
-        }
     }
+}
 
-    pub fn mark(handles: &[GcHandle<Obj>]) {}
+impl std::ops::Drop for Gc {
+    fn drop(&mut self) {
+        self.collect_no_handles();
+    }
 }
 
 #[macro_export]
 macro_rules! handle {
     ($x:expr) => {
-        crate::gc::GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new(crate::gc::GcData::new($x)))))
+        crate::gc::GcHandle::new(Rc::downgrade(&Rc::new(RefCell::new(
+            crate::gc::GcData::new($x, false),
+        ))))
     };
 }
 
 #[cfg(test)]
 mod tests {
     use std::assert;
-    use std::mem::size_of;
+    use std::collections::HashMap;
     use std::rc::Rc;
-
-    extern crate test;
-    use test::Bencher;
 
     use crate::gc::*;
     use crate::handle;
 
-    #[bench]
-    fn pointer_cycle(b: &mut Bencher) {
-        b.iter(|| {
-            let gc = Rc::new(RefCell::new(Gc::new()));
-            let obj = gc.borrow_mut().new_obj(Obj::Closure {
-                formal_args: Vec::new(),
-                rhs: handle!(Ast::Literal(handle!(Obj::Nil))),
-                env: HashMap::new(),
-            });
-            if let Obj::Closure {
-                formal_args: _,
-                rhs: _,
-                env,
-            } = &mut *obj.get().borrow_mut()
-            {
-                env.insert(String::from("hello"), Some(obj.clone()));
-            } else {
-                unreachable!()
-            }
-            println!("sizeof Obj: {}", size_of::<Obj>());
+    #[test]
+    fn clean_up_handle_cycle() {
+        let gc = Rc::new(RefCell::new(Gc::new()));
+        {
+            // Intentionally create a cycle of GcHandle's!
+            let rc: GcStrong<Obj> = {
+                let obj = gc.borrow_mut().new_obj(Obj::Closure {
+                    formal_args: Vec::new(),
+                    rhs: handle!(Ast::Literal(handle!(Obj::Nil))),
+                    env: HashMap::new(),
+                });
+                if let Obj::Closure {
+                    formal_args: _,
+                    rhs: _,
+                    ref mut env,
+                } = *obj.get().borrow_mut()
+                {
+                    env.insert(String::from("hello"), Some(obj.clone()));
+                } else {
+                    unreachable!()
+                }
 
-            assert!(obj.get().weak_count() == 2);
-        })
+                obj.get()
+            };
+            // We don't have any reachable GcHandle's, but the # of them is 1! 
+            // Eg, we have an unreachable pointer that still is out there somewhere!
+            assert_eq!(rc.weak_count(), 1);
+            assert_eq!(rc.strong_count(), 2);
+        }
+        // Ok, we have one object, and we have a single strong pointer (owned by the Gc) and a
+        // single weak pointer, out there in memory somewhere I guess.
+        assert_eq!(gc.borrow().obj_pool.len(), 1);
+        assert_eq!(gc.borrow().obj_pool[0].strong_count(), 1);
+        assert_eq!(gc.borrow().obj_pool[0].weak_count(), 1);
+
+        // Since this weak pointer isn't reachable, then it's memory should get collected and we
+        // should have 0 objects!
+        gc.borrow_mut().collect(Vec::new());
+
+        assert!(gc.borrow().obj_pool.is_empty());
+    }
+
+    #[test]
+    fn clean_up_no_handles() {
+        let gc = Rc::new(RefCell::new(Gc::new()));
+        // Ok, add an object to the GC, but immediately drop the handle for it.
+        gc.borrow_mut().new_obj(Obj::Nil);
+
+        // Assert valid state of GC
+        assert_eq!(gc.borrow().obj_pool.len(), 1);
+        assert_eq!(gc.borrow().obj_pool[0].strong_count(), 1);
+        assert_eq!(gc.borrow().obj_pool[0].weak_count(), 0);
+
+        gc.borrow_mut().collect_no_handles();
+        assert!(gc.borrow().obj_pool.is_empty());
+
+        { 
+            let handle = gc.borrow_mut().new_obj(Obj::Nil);
+            assert_eq!(gc.borrow().obj_pool.len(), 1);
+            assert_eq!(gc.borrow().obj_pool[0].strong_count(), 1);
+            assert_eq!(gc.borrow().obj_pool[0].weak_count(), 1);
+
+            gc.borrow_mut().collect_no_handles();
+            assert!(!gc.borrow().obj_pool.is_empty());
+            assert!(handle.inner.upgrade().is_some());
+        }
+
+        gc.borrow_mut().collect_no_handles();
+        assert!(gc.borrow().obj_pool.is_empty());
+        
+        {
+            let rc = gc.borrow_mut().new_obj(Obj::Nil).get();
+            assert_eq!(gc.borrow().obj_pool.len(), 1);
+            assert_eq!(gc.borrow().obj_pool[0].strong_count(), 2);
+            assert_eq!(gc.borrow().obj_pool[0].weak_count(), 0);
+
+            gc.borrow_mut().collect_no_handles();
+            assert!(!gc.borrow().obj_pool.is_empty());
+            assert_eq!(rc.strong_count(), 2);
+        }
+
+        gc.borrow_mut().collect_no_handles();
+        assert!(gc.borrow().obj_pool.is_empty());
     }
 }
